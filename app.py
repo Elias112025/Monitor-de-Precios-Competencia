@@ -1270,35 +1270,30 @@ if "precios_editados" not in st.session_state:
 # RECEPTOR DE EDICIONES DE PRECIO (query_params)
 # ─────────────────────────────────────────────
 _qp = st.query_params
-_was_vista = MODO_VISTA
 if "edit_sku" in _qp and "edit_emp" in _qp and "edit_pc" in _qp:
-    _edit_sku = str(_qp["edit_sku"])
-    _edit_emp = str(_qp["edit_emp"])
-    _edit_pc  = int(_qp["edit_pc"])
-    _k = (_edit_sku, _edit_emp)
-    if _edit_pc > 0:
-        if "precios_editados" not in st.session_state:
-            st.session_state["precios_editados"] = {}
-        st.session_state["precios_editados"][_k] = _edit_pc
-        _guardar_precio_editado_sb(_edit_sku, _edit_emp, _edit_pc)
-        logger.info(f"[EDIT] Precio editado: {_k} = ${_edit_pc}")
-    st.query_params.clear()
-    if _was_vista:
-        st.query_params["modo"] = "vista"
-    st.rerun()
+    try:
+        _k = (str(_qp["edit_sku"]), str(_qp["edit_emp"]))
+        _v = int(_qp["edit_pc"])
+        _was_vista = MODO_VISTA
+        if _v > 0:
+            st.session_state["precios_editados"][_k] = _v
+            _guardar_precio_editado_sb(_k[0], _k[1], _v)
+        st.query_params.clear()
+        if _was_vista:
+            st.query_params["modo"] = "vista"
+        st.rerun()
+    except: pass
 elif "reset_sku" in _qp and "reset_emp" in _qp:
-    _reset_sku = str(_qp["reset_sku"])
-    _reset_emp = str(_qp["reset_emp"])
-    _k = (_reset_sku, _reset_emp)
-    if "precios_editados" not in st.session_state:
-        st.session_state["precios_editados"] = {}
-    st.session_state["precios_editados"].pop(_k, None)
-    _eliminar_precio_editado_sb(_reset_sku, _reset_emp)
-    logger.info(f"[EDIT] Precio restablecido: {_k}")
-    st.query_params.clear()
-    if _was_vista:
-        st.query_params["modo"] = "vista"
-    st.rerun()
+    try:
+        _k = (str(_qp["reset_sku"]), str(_qp["reset_emp"]))
+        _was_vista = MODO_VISTA
+        st.session_state["precios_editados"].pop(_k, None)
+        _eliminar_precio_editado_sb(_k[0], _k[1])
+        st.query_params.clear()
+        if _was_vista:
+            st.query_params["modo"] = "vista"
+        st.rerun()
+    except: pass
 
 # ─────────────────────────────────────────────
 # HEADER
@@ -1427,7 +1422,15 @@ if actualizar:
                 nuevo_pc = _pe[k]
                 pf = row.get("_precio_form")
                 _df_nuevo.at[idx_r, "_precio_comp"] = nuevo_pc
-                _df_nuevo.at[idx_r, "_dif_num"] = (pf - nuevo_pc) if pf and nuevo_pc else None
+                dif_nueva = (pf - nuevo_pc) if pf and nuevo_pc else None
+                _df_nuevo.at[idx_r, "_dif_num"] = dif_nueva
+                # ✅ FIX: actualizar también las columnas HTML para que la tabla y el reporte reflejen el precio editado
+                precio_txt_nuevo = "$" + fmt(nuevo_pc)
+                _df_nuevo.at[idx_r, "Precio Comp."] = (
+                    f'<span class="price-pill price-editado">{precio_txt_nuevo}'
+                    f'<span class="editado-tag">✎ editado</span></span>'
+                )
+                _df_nuevo.at[idx_r, "Diferencia"] = r_dif(dif_nueva)
     st.session_state["df_final"]  = _df_nuevo
     st.session_state["timestamp"] = _ts_nuevo
     st.session_state["sku_modal"] = None
@@ -1461,14 +1464,21 @@ if "df_final" in st.session_state:
     df_reporte = st.session_state["df_final"].copy()
     precios_ed = st.session_state.get("precios_editados", {})
     if precios_ed:
-        st.info(f"📝 {len(precios_ed)} precio(s) editado(s) manualmente — se incluirán en el reporte.")
         for idx_r, row in df_reporte.iterrows():
             k = (str(row.get("_sku","")), str(row.get("_empresa","")))
             if k in precios_ed:
                 nuevo_pc = precios_ed[k]
                 pf = row.get("_precio_form")
+                dif_nueva = (pf - nuevo_pc) if pf and nuevo_pc else None
                 df_reporte.at[idx_r, "_precio_comp"] = nuevo_pc
-                df_reporte.at[idx_r, "_dif_num"] = (pf - nuevo_pc) if pf and nuevo_pc else None
+                df_reporte.at[idx_r, "_dif_num"] = dif_nueva
+                # ✅ FIX: actualizar columnas HTML para que el Excel descargado refleje el precio editado
+                precio_txt_nuevo = "$" + fmt(nuevo_pc)
+                df_reporte.at[idx_r, "Precio Comp."] = (
+                    f'<span class="price-pill price-editado">{precio_txt_nuevo}'
+                    f'<span class="editado-tag">✎ editado</span></span>'
+                )
+                df_reporte.at[idx_r, "Diferencia"] = r_dif(dif_nueva)
     xlsx_bytes = generar_reporte(df_reporte, df)
     st.download_button(
         label="⬇  Descargar Reporte",
