@@ -1270,30 +1270,35 @@ if "precios_editados" not in st.session_state:
 # RECEPTOR DE EDICIONES DE PRECIO (query_params)
 # ─────────────────────────────────────────────
 _qp = st.query_params
+_was_vista = MODO_VISTA
 if "edit_sku" in _qp and "edit_emp" in _qp and "edit_pc" in _qp:
-    try:
-        _k = (str(_qp["edit_sku"]), str(_qp["edit_emp"]))
-        _v = int(_qp["edit_pc"])
-        _was_vista = MODO_VISTA
-        if _v > 0:
-            st.session_state["precios_editados"][_k] = _v
-            _guardar_precio_editado_sb(_k[0], _k[1], _v)
-        st.query_params.clear()
-        if _was_vista:
-            st.query_params["modo"] = "vista"
-        st.rerun()
-    except: pass
+    _edit_sku = str(_qp["edit_sku"])
+    _edit_emp = str(_qp["edit_emp"])
+    _edit_pc  = int(_qp["edit_pc"])
+    _k = (_edit_sku, _edit_emp)
+    if _edit_pc > 0:
+        if "precios_editados" not in st.session_state:
+            st.session_state["precios_editados"] = {}
+        st.session_state["precios_editados"][_k] = _edit_pc
+        _guardar_precio_editado_sb(_edit_sku, _edit_emp, _edit_pc)
+        logger.info(f"[EDIT] Precio editado: {_k} = ${_edit_pc}")
+    st.query_params.clear()
+    if _was_vista:
+        st.query_params["modo"] = "vista"
+    st.rerun()
 elif "reset_sku" in _qp and "reset_emp" in _qp:
-    try:
-        _k = (str(_qp["reset_sku"]), str(_qp["reset_emp"]))
-        _was_vista = MODO_VISTA
-        st.session_state["precios_editados"].pop(_k, None)
-        _eliminar_precio_editado_sb(_k[0], _k[1])
-        st.query_params.clear()
-        if _was_vista:
-            st.query_params["modo"] = "vista"
-        st.rerun()
-    except: pass
+    _reset_sku = str(_qp["reset_sku"])
+    _reset_emp = str(_qp["reset_emp"])
+    _k = (_reset_sku, _reset_emp)
+    if "precios_editados" not in st.session_state:
+        st.session_state["precios_editados"] = {}
+    st.session_state["precios_editados"].pop(_k, None)
+    _eliminar_precio_editado_sb(_reset_sku, _reset_emp)
+    logger.info(f"[EDIT] Precio restablecido: {_k}")
+    st.query_params.clear()
+    if _was_vista:
+        st.query_params["modo"] = "vista"
+    st.rerun()
 
 # ─────────────────────────────────────────────
 # HEADER
@@ -1456,6 +1461,7 @@ if "df_final" in st.session_state:
     df_reporte = st.session_state["df_final"].copy()
     precios_ed = st.session_state.get("precios_editados", {})
     if precios_ed:
+        st.info(f"📝 {len(precios_ed)} precio(s) editado(s) manualmente — se incluirán en el reporte.")
         for idx_r, row in df_reporte.iterrows():
             k = (str(row.get("_sku","")), str(row.get("_empresa","")))
             if k in precios_ed:
