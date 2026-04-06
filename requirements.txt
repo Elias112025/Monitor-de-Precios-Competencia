@@ -1,7 +1,7 @@
 streamlit
 pandas
 requests
-cloudscraper==1.2.71
+cloudscraper
 beautifulsoup4
 openpyxl
 lxml
