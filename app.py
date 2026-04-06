@@ -1,7 +1,10 @@
 import streamlit as st
 import pandas as pd
 import requests
-import cloudscraper
+try:
+    import cloudscraper
+except ImportError:
+    cloudscraper = None
 from bs4 import BeautifulSoup
 import re
 import json
