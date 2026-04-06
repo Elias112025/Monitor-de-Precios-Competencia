@@ -1,0 +1,8 @@
+streamlit
+pandas
+requests
+cloudscraper
+beautifulsoup4
+openpyxl
+lxml
+supabase
