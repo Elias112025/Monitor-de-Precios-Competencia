@@ -54,8 +54,6 @@ def _get_supabase():
         return None
 
 # ── MODO VISTA ─────────────────────────────────────────────────────────────
-# Si se abre la app con ?modo=vista  OR  variable de entorno MODO_VISTA=1
-# → se carga el último snapshot guardado, sin botón de scraping.
 _qp_raw = st.query_params
 MODO_VISTA = (
     _qp_raw.get("modo", "").lower() == "vista"
@@ -71,20 +69,18 @@ HEADERS = {
     "Accept-Language": "es-CL,es;q=0.9"
 }
 
-# ── FIX 1: Dominios con TLS defectuoso — lista ampliada ───────────
 SSL_IGNORE_DOMAINS = [
     "interlight.cl",
     "tienda.contatto.cl",
     "vetaindomita.cl",
-    # Nuevos dominios con SSL roto detectados en logs:
-    "form.cl",           # ← CRÍTICO: es el sitio propio
+    "form.cl",
     "lasilleria.cl",
     "tolixcenter.cl",
     "solosillas.cl",
     "epicadeco.cl",
     "simplegracia.cl",
     "lablanqueria.cl",
-    "sodimac.cl",        # algunos endpoints fallan con SSL
+    "sodimac.cl",
 ]
 
 # ─────────────────────────────────────────────
@@ -232,7 +228,6 @@ init_db()
 
 # ── SNAPSHOT helpers (Supabase) ─────────────────────────────────────────────
 def guardar_snapshot(df_final: pd.DataFrame, timestamp: str):
-    """Serializa el DataFrame y lo sube a Supabase."""
     try:
         data_b64 = base64.b64encode(pickle.dumps({"df_final": df_final, "timestamp": timestamp})).decode()
         sb = _get_supabase()
@@ -246,7 +241,6 @@ def guardar_snapshot(df_final: pd.DataFrame, timestamp: str):
         logger.warning(f"[snapshot] No se pudo guardar: {e}")
 
 def cargar_snapshot() -> tuple:
-    """Descarga el último snapshot desde Supabase."""
     try:
         sb = _get_supabase()
         if not sb:
@@ -260,6 +254,57 @@ def cargar_snapshot() -> tuple:
     except Exception as e:
         logger.warning(f"[snapshot] No se pudo cargar: {e}")
         return None, None
+
+# ── PRECIOS EDITADOS en Supabase (persistentes) ────────────────────────────
+def _cargar_precios_editados_sb() -> dict:
+    """Carga todos los precios editados desde Supabase."""
+    try:
+        sb = _get_supabase()
+        if not sb:
+            return {}
+        res = sb.table("precios_editados").select("sku,empresa,precio").execute()
+        if not res.data:
+            return {}
+        return {(r["sku"], r["empresa"]): r["precio"] for r in res.data}
+    except Exception as e:
+        logger.warning(f"[precios_editados] No se pudo cargar: {e}")
+        return {}
+
+def _guardar_precio_editado_sb(sku: str, empresa: str, precio: int):
+    """Guarda o actualiza un precio editado en Supabase."""
+    try:
+        sb = _get_supabase()
+        if not sb:
+            return
+        sb.table("precios_editados").upsert(
+            {"sku": sku, "empresa": empresa, "precio": precio},
+            on_conflict="sku,empresa"
+        ).execute()
+        logger.info(f"[precios_editados] Guardado: {sku}/{empresa} = ${precio}")
+    except Exception as e:
+        logger.warning(f"[precios_editados] No se pudo guardar: {e}")
+
+def _eliminar_precio_editado_sb(sku: str, empresa: str):
+    """Elimina un precio editado de Supabase."""
+    try:
+        sb = _get_supabase()
+        if not sb:
+            return
+        sb.table("precios_editados").delete().eq("sku", sku).eq("empresa", empresa).execute()
+        logger.info(f"[precios_editados] Eliminado: {sku}/{empresa}")
+    except Exception as e:
+        logger.warning(f"[precios_editados] No se pudo eliminar: {e}")
+
+def _limpiar_todos_precios_editados_sb():
+    """Elimina todos los precios editados de Supabase."""
+    try:
+        sb = _get_supabase()
+        if not sb:
+            return
+        sb.table("precios_editados").delete().neq("id", 0).execute()
+        logger.info("[precios_editados] Todos eliminados")
+    except Exception as e:
+        logger.warning(f"[precios_editados] No se pudo limpiar: {e}")
 
 # ─────────────────────────────────────────────
 # DATACLASS
@@ -304,9 +349,6 @@ def get_empresa(url: str) -> str:
 # FIX 2: Request unificado con manejo SSL + retry automático
 # ─────────────────────────────────────────────
 def _hacer_request(url: str):
-    """Request unificado: cloudscraper para sitios protegidos,
-       SSL ignorado para sitios con TLS roto, requests normal para el resto.
-       Si falla con SSLError y el dominio no estaba en la lista, reintenta con verify=False."""
     no_verify = any(d in url for d in SSL_IGNORE_DOMAINS)
 
     if any(x in url for x in ["ripley.cl", "falabella.com"]):
@@ -329,7 +371,6 @@ def _hacer_request(url: str):
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         return requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT, verify=False)
 
-    # Dominio genérico — intentar normal, si falla SSL hacer retry sin verificación
     try:
         return requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.SSLError:
@@ -445,9 +486,6 @@ def _limpiar_precio_zara(txt, es_zarahome: bool = False) -> Optional[int]:
     except:
         return limpiar_precio(txt)
 
-# ─────────────────────────────────────────────
-# FIX 3: Script Playwright — Falabella usa domcontentloaded + timeouts reducidos
-# ─────────────────────────────────────────────
 _PW_SCRIPT = r"""
 import sys, json, time, re
 from playwright.sync_api import sync_playwright
@@ -500,14 +538,10 @@ try:
         page = ctx.new_page()
 
         if es_falabella:
-            # FIX: usar domcontentloaded en vez de networkidle para evitar timeouts
-            # en páginas React muy pesadas. Timeout reducido a 35s.
             try:
                 page.goto(url, timeout=35000, wait_until="domcontentloaded")
             except Exception as e_goto:
-                # Si incluso domcontentloaded falla, continuar con lo que cargó
                 pass
-            # Esperar selector de precio con timeout reducido
             try:
                 page.wait_for_selector(
                     "[class*='price'], [data-testid*='price'], "
@@ -557,7 +591,6 @@ try:
         imagen = None
         precio = None
 
-        # Estrategia 1: meta og:price
         try:
             meta_el = page.query_selector("meta[property='product:price:amount']")
             if meta_el:
@@ -567,7 +600,6 @@ try:
         except:
             pass
 
-        # Estrategia 2: JSON-LD
         if not precio:
             from bs4 import BeautifulSoup
             import json as _json
@@ -592,7 +624,6 @@ try:
             if cands:
                 precio = min(cands)
 
-        # Estrategia 3: Zara — selectores DOM
         if not precio and es_zara_any:
             zara_selectors = [
                 "[class*='price'] [class*='amount']",
@@ -614,7 +645,6 @@ try:
                 except:
                     pass
 
-        # Estrategia 4: Zara — regex en HTML
         if not precio and es_zara_any:
             for pattern in [
                 r'"price"\s*:\s*"?([\d\.]+)"?',
@@ -628,7 +658,6 @@ try:
                         precio = p
                         break
 
-        # Estrategia 5: __NEXT_DATA__ (Falabella/Sodimac)
         if not precio and es_falabella:
             next_data_match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
             if next_data_match:
@@ -650,7 +679,6 @@ try:
                 except:
                     pass
 
-        # Estrategia 6: selectores DOM Falabella/Sodimac
         if not precio and es_falabella:
             price_selectors = [
                 "[class*='price-box'] [class*='prices-0']",
@@ -673,7 +701,6 @@ try:
                 except:
                     pass
 
-        # Estrategia 7: regex general HTML (Falabella/Sodimac)
         if not precio and es_falabella:
             cands_regex = []
             for pattern in [
@@ -694,7 +721,6 @@ try:
                 freq = Counter(cands_regex)
                 precio = freq.most_common(1)[0][0]
 
-        # Estrategia 8: data-price atributo
         if not precio:
             try:
                 el = page.query_selector("[data-price]")
@@ -703,7 +729,6 @@ try:
             except:
                 pass
 
-        # Nombre e imagen
         try:
             og = page.query_selector("meta[property='og:title']")
             nombre = og.get_attribute("content") if og else page.title()
@@ -812,7 +837,6 @@ def _scrape_con_requests_cached(url: str) -> ResultadoScrape:
         return ResultadoScrape(url=url, nombre=nombre, precio_txt=precio_txt,
                                precio_num=precio_num, imagen=imagen, estado="ok", empresa=empresa)
     except requests.exceptions.SSLError as ssl_err:
-        # FIX: retry automático con verify=False si no estaba en SSL_IGNORE_DOMAINS
         logger.warning(f"[SSL no manejado] Reintentando sin verificación: {url[:70]}")
         try:
             import urllib3
@@ -948,13 +972,19 @@ def _rpt_tabla(wb, df):
         elif dn and dn > 0: estado = "Sobre precio competencia"
         elif dn and dn < 0: estado = "Bajo precio competencia"
         else:               estado = "Igual"
+
+        nombre_prod = _xstrip(str(row.get("_nombre","")))
+        nombre_comp = _xstrip(str(row.get("Producto Comp.","")))
+        url_form    = str(row.get("_url_form","")) if row.get("_url_form") else ""
+        url_comp    = str(row.get("_url_comp","")) if row.get("_url_comp") else ""
+
         vals = [
             row.get("_sku",""),
             _xstrip(str(row.get("_rubro",""))),
-            _xstrip(str(row.get("_nombre",""))),
+            nombre_prod,
             pf or "—",
             row.get("_empresa",""),
-            _xstrip(str(row.get("Producto Comp.",""))),
+            nombre_comp,
             pc or "—",
             dn if dn is not None else "—",
             (dp/100) if dp is not None else "—",
@@ -980,6 +1010,17 @@ def _rpt_tabla(wb, df):
                     color=_GN if v=="Sobre precio competencia" else _RD if v=="Bajo precio competencia" else _GM)
             else:
                 c.font = _xfont(size=8)
+
+            # ── HIPERVÍNCULOS en nombres de producto ──
+            if ci == 3 and url_form:
+                c.hyperlink = url_form
+                c.font = _xfont(size=8, color="0563C1")
+                c.alignment = _xalign("left")
+            elif ci == 6 and url_comp:
+                c.hyperlink = url_comp
+                c.font = _xfont(size=8, color="0563C1")
+                c.alignment = _xalign("left")
+
         _xrh(ws, r, 15)
     ws.freeze_panes = "A2"; ws.auto_filter.ref = f"A1:K{r}"
     _xcw(ws, {"A":10,"B":13,"C":28,"D":13,"E":13,"F":26,"G":13,"H":13,"I":8,"J":9,"K":12})
@@ -1220,11 +1261,14 @@ columnas_comp = [c for c in df.columns if str(c).startswith("Link_Comp")]
 rubros_disponibles = sorted(df["Rubro"].dropna().unique().tolist()) if "Rubro" in df.columns else []
 
 # ─────────────────────────────────────────────
-# RECEPTOR DE EDICIONES DE PRECIO (query_params)
+# PRECIOS EDITADOS — cargar desde Supabase al inicio
 # ─────────────────────────────────────────────
 if "precios_editados" not in st.session_state:
-    st.session_state["precios_editados"] = {}
+    st.session_state["precios_editados"] = _cargar_precios_editados_sb()
 
+# ─────────────────────────────────────────────
+# RECEPTOR DE EDICIONES DE PRECIO (query_params)
+# ─────────────────────────────────────────────
 _qp = st.query_params
 if "edit_sku" in _qp and "edit_emp" in _qp and "edit_pc" in _qp:
     try:
@@ -1232,6 +1276,7 @@ if "edit_sku" in _qp and "edit_emp" in _qp and "edit_pc" in _qp:
         _v = int(_qp["edit_pc"])
         if _v > 0:
             st.session_state["precios_editados"][_k] = _v
+            _guardar_precio_editado_sb(_k[0], _k[1], _v)
         st.query_params.clear()
         st.rerun()
     except: pass
@@ -1239,6 +1284,7 @@ elif "reset_sku" in _qp and "reset_emp" in _qp:
     try:
         _k = (str(_qp["reset_sku"]), str(_qp["reset_emp"]))
         st.session_state["precios_editados"].pop(_k, None)
+        _eliminar_precio_editado_sb(_k[0], _k[1])
         st.query_params.clear()
         st.rerun()
     except: pass
@@ -1265,14 +1311,12 @@ st.markdown(f"""
 # CONTROLES
 # ─────────────────────────────────────────────
 if MODO_VISTA:
-    # En modo vista: cargamos snapshot al inicio si aún no hay datos en sesión
     if "df_final" not in st.session_state:
         _df_snap, _ts_snap = cargar_snapshot()
         if _df_snap is not None:
             st.session_state["df_final"]  = _df_snap
             st.session_state["timestamp"] = _ts_snap
             st.session_state["sku_modal"] = None
-    # Banner informativo
     ts_snap = st.session_state.get("timestamp", "—")
     st.markdown(f"""
     <div style="display:flex;align-items:center;gap:12px;background:#fdf9e3;border:1.5px solid #F5D000;
@@ -1344,6 +1388,8 @@ if actualizar:
                 "_sku": sku, "_nombre": nom_excel or res_form.nombre or sku,
                 "_empresa": res_comp.empresa, "_rubro": rubro, "_dif_num": dif,
                 "_precio_form": res_form.precio_num, "_precio_comp": res_comp.precio_num,
+                "_url_form": url_form,
+                "_url_comp": url_comp,
                 "_row_excel": row.to_dict(),
                 "_busqueda": f"{sku} {nom_excel or ''} {res_form.nombre or ''} {res_comp.nombre or ''} {rubro or ''}".lower(),
                 "SKU":          f'<span class="sku-btn" data-sku="{sku}">{sku}</span>' if sku else "",
@@ -1364,7 +1410,7 @@ if actualizar:
     st.session_state["df_final"]  = _df_nuevo
     st.session_state["timestamp"] = _ts_nuevo
     st.session_state["sku_modal"] = None
-    guardar_snapshot(_df_nuevo, _ts_nuevo)   # ← persiste para el modo vista
+    guardar_snapshot(_df_nuevo, _ts_nuevo)
     st.rerun()
 
 # ─────────────────────────────────────────────
@@ -1418,9 +1464,6 @@ if "df_final" in st.session_state:
         row_excel  = rows_match.iloc[0].to_dict() if len(rows_match) > 0 else {}
         with st.expander(f"📊 {sku_nombre_map.get(sku_activo, sku_activo)}", expanded=True):
             render_modal_sku(sku_activo, filas_sku, row_excel)
-
-    if "precios_editados" not in st.session_state:
-        st.session_state["precios_editados"] = {}
 
     for idx, row in df_vis.iterrows():
         key = (str(row.get("_sku","")), str(row.get("_empresa","")))
@@ -1677,9 +1720,11 @@ if "df_final" in st.session_state:
                 c0.write(sku_k); c1.write(emp_k); c2.write(f"${fmt(pc_k)}")
                 if c3.button("✕", key=f"del_{sku_k}_{emp_k}"):
                     del st.session_state["precios_editados"][(sku_k, emp_k)]
+                    _eliminar_precio_editado_sb(sku_k, emp_k)
                     st.rerun()
             if st.button("Limpiar todos los precios editados"):
                 st.session_state["precios_editados"] = {}
+                _limpiar_todos_precios_editados_sb()
                 st.rerun()
 else:
     if MODO_VISTA:
