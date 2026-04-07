@@ -1464,27 +1464,25 @@ if "df_final" in st.session_state:
     precios_ed = st.session_state.get("precios_editados", {})
     df_reporte = st.session_state["df_final"].copy()
 
-    # DEBUG: mostrar qué claves hay en precios_editados vs el df
     if precios_ed:
-        claves_df    = [(str(r.get("_sku","")), str(r.get("_empresa",""))) for _, r in df_reporte.iterrows()]
-        claves_ed    = list(precios_ed.keys())
-        coinciden    = [k for k in claves_ed if k in claves_df]
-        no_coinciden = [k for k in claves_ed if k not in claves_df]
-        st.info(
-            f"🔍 DEBUG precios_editados: {claves_ed}\n"
-            f"Coinciden con df: {coinciden}\n"
-            f"NO coinciden: {no_coinciden}\n"
-            f"Muestra claves df (primeras 5): {claves_df[:5]}"
-        )
+        # Construir lookup normalizado para evitar problemas de tipo/espacios
+        lookup_ed = {
+            (str(sku).strip(), str(emp).strip()): int(pc)
+            for (sku, emp), pc in precios_ed.items()
+        }
+        for idx_r, row in df_reporte.iterrows():
+            k = (str(row.get("_sku","")).strip(), str(row.get("_empresa","")).strip())
+            if k in lookup_ed:
+                nuevo_pc = lookup_ed[k]
+                pf_raw = row.get("_precio_form")
+                try:
+                    pf = int(pf_raw) if pf_raw is not None and str(pf_raw) not in ("", "nan", "None") else None
+                except:
+                    pf = None
+                dif_nueva = (pf - nuevo_pc) if pf and nuevo_pc else None
+                df_reporte.at[idx_r, "_precio_comp"] = nuevo_pc
+                df_reporte.at[idx_r, "_dif_num"]     = dif_nueva
 
-    for idx_r, row in df_reporte.iterrows():
-        k = (str(row.get("_sku","")), str(row.get("_empresa","")))
-        if k in precios_ed:
-            nuevo_pc = precios_ed[k]
-            pf = row.get("_precio_form")
-            dif_nueva = (pf - nuevo_pc) if pf and nuevo_pc else None
-            df_reporte.at[idx_r, "_precio_comp"] = nuevo_pc
-            df_reporte.at[idx_r, "_dif_num"] = dif_nueva
     xlsx_bytes = generar_reporte(df_reporte, df)
     nombre_archivo = f"reporte_precios_{time.strftime('%Y%m%d_%H%M')}.xlsx"
     st.download_button(
