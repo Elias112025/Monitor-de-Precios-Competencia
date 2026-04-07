@@ -1460,31 +1460,26 @@ if "df_final" in st.session_state:
     </div>
     """, unsafe_allow_html=True)
 
-    nombre_archivo = f"reporte_precios_{time.strftime('%Y%m%d_%H%M')}.xlsx"
-    df_reporte = st.session_state["df_final"].copy()
+    # ✅ FIX REAL: regenerar el Excel en cada render para que siempre incluya los precios editados actuales.
+    # st.download_button cachea el archivo del primer render — hay que regenerarlo siempre aquí.
     precios_ed = st.session_state.get("precios_editados", {})
-    if precios_ed:
-        for idx_r, row in df_reporte.iterrows():
-            k = (str(row.get("_sku","")), str(row.get("_empresa","")))
-            if k in precios_ed:
-                nuevo_pc = precios_ed[k]
-                pf = row.get("_precio_form")
-                dif_nueva = (pf - nuevo_pc) if pf and nuevo_pc else None
-                df_reporte.at[idx_r, "_precio_comp"] = nuevo_pc
-                df_reporte.at[idx_r, "_dif_num"] = dif_nueva
-                # ✅ FIX: actualizar columnas HTML para que el Excel descargado refleje el precio editado
-                precio_txt_nuevo = "$" + fmt(nuevo_pc)
-                df_reporte.at[idx_r, "Precio Comp."] = (
-                    f'<span class="price-pill price-editado">{precio_txt_nuevo}'
-                    f'<span class="editado-tag">✎ editado</span></span>'
-                )
-                df_reporte.at[idx_r, "Diferencia"] = r_dif(dif_nueva)
+    df_reporte = st.session_state["df_final"].copy()
+    for idx_r, row in df_reporte.iterrows():
+        k = (str(row.get("_sku","")), str(row.get("_empresa","")))
+        if k in precios_ed:
+            nuevo_pc = precios_ed[k]
+            pf = row.get("_precio_form")
+            dif_nueva = (pf - nuevo_pc) if pf and nuevo_pc else None
+            df_reporte.at[idx_r, "_precio_comp"] = nuevo_pc
+            df_reporte.at[idx_r, "_dif_num"] = dif_nueva
     xlsx_bytes = generar_reporte(df_reporte, df)
+    nombre_archivo = f"reporte_precios_{time.strftime('%Y%m%d_%H%M')}.xlsx"
     st.download_button(
         label="⬇  Descargar Reporte",
         data=xlsx_bytes,
         file_name=nombre_archivo,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key=f"dl_reporte_{hash(str(sorted(precios_ed.items())))}",
     )
 
     import streamlit.components.v1 as components
