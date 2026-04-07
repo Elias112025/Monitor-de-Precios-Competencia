@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:transparent;overflow:hidden}
+.outer{border:1px solid #e4e4e4;border-radius:12px;overflow:hidden;background:#fff}
+.search-bar{height:48px;display:flex;align-items:center;padding:0 14px;border-bottom:1px solid #e4e4e4;background:#fafaf8;gap:8px}
+.search-bar input{flex:1;border:none;outline:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:0.84rem;color:#111}
+.search-bar input::placeholder{color:#aaa}
+.result-count{font-size:0.7rem;color:#aaa;white-space:nowrap;font-family:'DM Mono',monospace}
+.scroll-wrap{overflow-y:auto;overflow-x:auto}
+.scroll-wrap::-webkit-scrollbar{width:5px;height:5px}
+.scroll-wrap::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}
+table{border-collapse:collapse;font-size:0.82rem;min-width:820px;width:100%}
+thead th{position:sticky;top:0;z-index:20;background:#fff;height:40px;padding:0 12px;text-align:left;font-size:0.63rem;font-weight:700;color:#5a5a5a;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap;border-bottom:2px solid #F5D000}
+th.sku-th,td.sku-td{position:sticky;left:0;z-index:15;background:#fff;width:130px;min-width:130px;border-right:1px solid #ebebeb}
+thead th.sku-th{z-index:25}
+tbody tr td{height:48px;padding:0 12px;border-bottom:1px solid #f0f0ee;vertical-align:middle;color:#2e2e2e}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:#fafaf8}
+tbody tr:hover td.sku-td{background:#fafaf8}
+tbody tr.fila-activa td{background:#fffde7}
+tbody tr.hidden{display:none}
+.sku-badge{display:inline-block;background:#111;color:#F5D000;padding:3px 9px;border-radius:4px;font-family:'DM Mono',monospace;font-size:0.7rem;font-weight:600;white-space:nowrap}
+.sku-activo{background:#F5D000!important;color:#111!important}
+.price-pill{display:inline-block;background:#f2f2f0;border:1px solid #e4e4e4;border-radius:5px;padding:3px 8px;font-family:'DM Mono',monospace;font-size:0.77rem;color:#2e2e2e;white-space:nowrap}
+.price-our{background:#F5D000;border-color:#c9aa00;color:#111;font-weight:700}
+.price-editado{background:#e8f0ff!important;border-color:#4b7cff!important;color:#1a3caa!important}
+.editado-tag{display:inline-block;margin-left:5px;font-size:0.6rem;color:#4b7cff;font-weight:700;vertical-align:middle}
+.td-precio-comp{cursor:pointer}
+.td-precio-comp:hover .price-pill{border-color:#4b7cff!important}
+.empresa-tag{display:inline-block;background:#111;color:#fff;font-size:0.65rem;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase}
+.rubro-tag{display:inline-block;background:#fdf9e3;border:1px solid #F5D000;color:#111;font-size:0.65rem;font-weight:600;padding:2px 6px;border-radius:4px}
+.product-name{max-width:175px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;font-weight:500;color:#1c1c1c}
+.product-name a{color:inherit;text-decoration:none}
+.product-name a:hover{color:#c9aa00;text-decoration:underline}
+.dif-mas{color:#d93a3a;font-weight:700;font-family:'DM Mono',monospace;font-size:0.77rem}
+.dif-menos{color:#1a9e6e;font-weight:700;font-family:'DM Mono',monospace;font-size:0.77rem}
+.dif-igual{color:#aaa;font-family:'DM Mono',monospace;font-size:0.77rem}
+.price-up{color:#d93a3a;font-size:0.69rem;font-weight:600}
+.price-down{color:#1a9e6e;font-size:0.69rem;font-weight:600}
+.status-none{color:#aaa;font-style:italic;font-size:0.73rem}
+img{border-radius:6px;object-fit:cover;border:1px solid #e4e4e4}
+/* Modal */
+#edit-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center}
+#edit-overlay.visible{display:flex}
+#edit-box{background:#fff;border-radius:14px;padding:28px 32px;min-width:320px;box-shadow:0 8px 40px rgba(0,0,0,0.18);font-family:'DM Sans',sans-serif}
+#edit-box h3{font-size:1rem;font-weight:700;color:#111;margin-bottom:4px}
+#edit-box .edit-sub{font-size:0.78rem;color:#888;margin-bottom:18px}
+#edit-box .edit-row{display:flex;gap:10px;align-items:center;margin-bottom:14px}
+#edit-box label{font-size:0.75rem;font-weight:600;color:#5a5a5a;min-width:90px}
+#edit-box input{flex:1;border:1.5px solid #e4e4e4;border-radius:7px;padding:8px 12px;font-family:'DM Mono',monospace;font-size:0.95rem;color:#111;outline:none}
+#edit-box input:focus{border-color:#F5D000}
+#edit-box .edit-btns{display:flex;gap:10px;margin-top:6px}
+#edit-box button{flex:1;padding:9px;border-radius:8px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:700;font-size:0.85rem}
+.btn-guardar{background:#F5D000;color:#111}
+.btn-guardar:hover{background:#e0c000}
+.btn-restablecer{background:#f2f2f0;color:#555}
+.btn-restablecer:hover{background:#e4e4e4}
+.btn-cancelar{background:#fff;color:#888;border:1px solid #e4e4e4!important}
+</style>
+</head>
+<body>
+
+<div class="outer">
+  <div class="search-bar">
+    <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
+      <circle cx="8.5" cy="8.5" r="5.5" stroke="#111" stroke-width="2"/>
+      <path d="M13 13l4 4" stroke="#111" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <input type="text" id="buscar" placeholder="Filtrar por producto, SKU, rubro, tienda…" oninput="filtrar(this.value)">
+    <span class="result-count" id="count">0 productos</span>
+  </div>
+  <div class="scroll-wrap" id="scroll-wrap">
+    <table id="tabla-principal">
+      <thead><tr>
+        <th class="sku-th">SKU</th>
+        <th>Rubro</th><th>Foto</th><th>Producto</th><th>Precio Nuestro</th>
+        <th>Tienda</th><th>Foto</th><th>Competidor</th>
+        <th title="Doble click para editar">Precio Comp. ✎</th><th>Diferencia</th><th>Margen</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="edit-overlay">
+  <div id="edit-box">
+    <h3 id="edit-title">Editar precio competidor</h3>
+    <div class="edit-sub" id="edit-sub"></div>
+    <div class="edit-row">
+      <label>Precio nuevo</label>
+      <input type="number" id="edit-input" placeholder="Ej: 49990" min="0" step="1">
+    </div>
+    <div class="edit-btns">
+      <button class="btn-guardar" onclick="guardarEdicion()">✓ Guardar</button>
+      <button class="btn-restablecer" onclick="restablecerPrecio()">↺ Restablecer</button>
+      <button class="btn-cancelar" onclick="cerrarModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var _editTd = null;
+var _editTr = null;
+var _currentArgs = null;
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function fmt(n) {
+  if (!n && n !== 0) return '—';
+  return '$' + parseInt(n).toLocaleString('es-CL');
+}
+function renderDif(pf, pc) {
+  if (!pf || !pc) return '<span class="dif-igual">—</span>';
+  var d = pf - pc;
+  if (d > 0) return '<span class="dif-mas">▲ +' + parseInt(d).toLocaleString('es-CL') + '</span>';
+  if (d < 0) return '<span class="dif-menos">▼ -' + parseInt(Math.abs(d)).toLocaleString('es-CL') + '</span>';
+  return '<span class="dif-igual">= 0</span>';
+}
+
+// ── Render tabla ─────────────────────────────────────────────────────────────
+function renderTabla(filas, skuActivo) {
+  var tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+  var count = document.getElementById('count');
+  count.textContent = filas.length + ' producto' + (filas.length !== 1 ? 's' : '');
+
+  filas.forEach(function(fila, i) {
+    var sku = fila._sku || '';
+    var empresa = fila._empresa || '';
+    var activo = (sku === skuActivo);
+    var pf = fila._precio_form || 0;
+    var pc = fila._precio_comp || 0;
+    var editado = fila._editado || false;
+
+    var skuBadge = activo
+      ? '<span class="sku-badge sku-activo">✦ ' + sku + '</span>'
+      : '<span class="sku-badge">' + sku + '</span>';
+
+    var precioCompHtml;
+    if (editado && pc) {
+      precioCompHtml = '<span class="price-pill price-editado">' + fmt(pc) +
+        '<span class="editado-tag">✎ editado</span></span>';
+    } else if (pc) {
+      precioCompHtml = '<span class="price-pill">' + fmt(pc) + '</span>';
+    } else {
+      precioCompHtml = '<span class="status-none">sin precio</span>';
+    }
+
+    var busq = (sku + ' ' + (fila._nombre||'') + ' ' + (fila._rubro||'') + ' ' + empresa).toLowerCase();
+
+    var tr = document.createElement('tr');
+    if (activo) tr.classList.add('fila-activa');
+    tr.setAttribute('data-search', busq);
+    tr.setAttribute('data-idx', i);
+    tr.setAttribute('data-sku', sku);
+    tr.setAttribute('data-empresa', empresa);
+    tr.setAttribute('data-pf', pf);
+    tr.setAttribute('data-pc', pc);
+    tr.innerHTML = [
+      '<td class="sku-td">' + skuBadge + '</td>',
+      '<td>' + (fila.Rubro || '') + '</td>',
+      '<td>' + (fila.Foto || '') + '</td>',
+      '<td>' + (fila.Producto || '') + '</td>',
+      '<td>' + (fila["Precio Nuestro"] || '') + '</td>',
+      '<td>' + (fila.Tienda || '') + '</td>',
+      '<td>' + (fila["Foto Comp."] || '') + '</td>',
+      '<td>' + (fila["Producto Comp."] || '') + '</td>',
+      '<td class="td-precio-comp" data-pc="' + pc + '" ondblclick="editarPrecio(this)">' + precioCompHtml + '</td>',
+      '<td>' + (fila.Diferencia || '') + '</td>',
+      '<td>' + (fila.Margen || '') + '</td>',
+    ].join('');
+    tbody.appendChild(tr);
+  });
+
+  // Ajustar altura
+  var n = filas.length;
+  var ROW_H = 48, HEADER_H = 40, SEARCH_H = 48;
+  var scrollH = Math.min(520, Math.max(180, HEADER_H + n * ROW_H));
+  document.getElementById('scroll-wrap').style.height = scrollH + 'px';
+  var totalH = SEARCH_H + scrollH + 2;
+  window.parent.postMessage({isStreamlitMessage: true, type: 'streamlit:setFrameHeight', height: totalH}, '*');
+}
+
+// ── Edición ──────────────────────────────────────────────────────────────────
+function editarPrecio(td) {
+  _editTd = td;
+  _editTr = td.closest('tr');
+  var sku     = _editTr.getAttribute('data-sku');
+  var empresa = _editTr.getAttribute('data-empresa');
+  var pcActual = parseInt(td.getAttribute('data-pc')) || 0;
+  document.getElementById('edit-title').textContent = 'Editar precio — ' + empresa;
+  document.getElementById('edit-sub').textContent   = 'SKU: ' + sku + '  ·  Actual: ' + fmt(pcActual);
+  document.getElementById('edit-input').value = pcActual || '';
+  document.getElementById('edit-overlay').classList.add('visible');
+  setTimeout(function(){ document.getElementById('edit-input').select(); }, 80);
+}
+
+function cerrarModal() {
+  document.getElementById('edit-overlay').classList.remove('visible');
+  _editTd = null; _editTr = null;
+}
+
+function guardarEdicion() {
+  var val = parseInt(document.getElementById('edit-input').value);
+  if (!val || val < 100) { alert('Ingresa un precio válido (mínimo $100)'); return; }
+  var sku     = _editTr.getAttribute('data-sku');
+  var empresa = _editTr.getAttribute('data-empresa');
+  var pf      = parseInt(_editTr.getAttribute('data-pf')) || 0;
+
+  // Actualizar DOM inmediatamente (feedback visual)
+  _editTd.setAttribute('data-pc', val);
+  _editTd.innerHTML = '<span class="price-pill price-editado">' + fmt(val) +
+    '<span class="editado-tag">✎ editado</span></span>';
+  _editTr.setAttribute('data-pc', val);
+  var tdDif = _editTr.querySelector('.td-precio-comp + td');
+  if (tdDif) tdDif.innerHTML = renderDif(pf, val);
+
+  cerrarModal();
+
+  // Enviar a Streamlit via componente
+  sendToStreamlit({action: 'edit', sku: sku, empresa: empresa, precio: val});
+}
+
+function restablecerPrecio() {
+  var sku     = _editTr.getAttribute('data-sku');
+  var empresa = _editTr.getAttribute('data-empresa');
+  cerrarModal();
+  sendToStreamlit({action: 'reset', sku: sku, empresa: empresa});
+}
+
+// ── Comunicación con Streamlit ────────────────────────────────────────────────
+function sendToStreamlit(data) {
+  // Protocolo de componentes de Streamlit
+  window.parent.postMessage({
+    isStreamlitMessage: true,
+    type: 'streamlit:componentChanged',
+    value: data,
+    dataType: 'json'
+  }, '*');
+}
+
+// ── Filtro ────────────────────────────────────────────────────────────────────
+function filtrar(q) {
+  var term = q.trim().toLowerCase();
+  var rows = document.querySelectorAll('#tbody tr');
+  var visible = 0;
+  rows.forEach(function(tr) {
+    var match = !term || (tr.getAttribute('data-search') || '').includes(term);
+    tr.classList.toggle('hidden', !match);
+    if (match) visible++;
+  });
+  document.getElementById('count').textContent = visible + ' producto' + (visible !== 1 ? 's' : '');
+}
+
+// ── Teclado ───────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') cerrarModal();
+  if (e.key === 'Enter' && document.getElementById('edit-overlay').classList.contains('visible')) guardarEdicion();
+});
+document.getElementById('edit-overlay').addEventListener('click', function(e) {
+  if (e.target === this) cerrarModal();
+});
+
+// ── Streamlit Component API ───────────────────────────────────────────────────
+window.addEventListener('message', function(e) {
+  if (!e.data || e.data.type !== 'streamlit:render') return;
+  var args = e.data.args || {};
+  _currentArgs = args;
+  var filas = args.filas || [];
+  var skuActivo = args.sku_activo || null;
+  renderTabla(filas, skuActivo);
+});
+
+// Señal de que el componente está listo
+window.parent.postMessage({
+  isStreamlitMessage: true,
+  type: 'streamlit:componentReady',
+  apiVersion: 1
+}, '*');
+</script>
+</body>
+</html>
