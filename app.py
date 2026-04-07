@@ -1460,10 +1460,23 @@ if "df_final" in st.session_state:
     </div>
     """, unsafe_allow_html=True)
 
-    # ✅ FIX REAL: regenerar el Excel en cada render para que siempre incluya los precios editados actuales.
-    # st.download_button cachea el archivo del primer render — hay que regenerarlo siempre aquí.
+    # Regenerar Excel siempre con precios editados actuales
     precios_ed = st.session_state.get("precios_editados", {})
     df_reporte = st.session_state["df_final"].copy()
+
+    # DEBUG: mostrar qué claves hay en precios_editados vs el df
+    if precios_ed:
+        claves_df    = [(str(r.get("_sku","")), str(r.get("_empresa",""))) for _, r in df_reporte.iterrows()]
+        claves_ed    = list(precios_ed.keys())
+        coinciden    = [k for k in claves_ed if k in claves_df]
+        no_coinciden = [k for k in claves_ed if k not in claves_df]
+        st.info(
+            f"🔍 DEBUG precios_editados: {claves_ed}\n"
+            f"Coinciden con df: {coinciden}\n"
+            f"NO coinciden: {no_coinciden}\n"
+            f"Muestra claves df (primeras 5): {claves_df[:5]}"
+        )
+
     for idx_r, row in df_reporte.iterrows():
         k = (str(row.get("_sku","")), str(row.get("_empresa","")))
         if k in precios_ed:
