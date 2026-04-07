@@ -188,6 +188,7 @@ div[data-testid="stButton"] > button { font-family: 'DM Mono', monospace !import
 .reporte-sub   { font-size: 0.73rem; color: var(--gray-mid); margin-top: 2px; }
 </style>
 """, unsafe_allow_html=True)
+
 # ─────────────────────────────────────────────
 # BASE DE DATOS — HISTORIAL
 # ─────────────────────────────────────────────
@@ -257,7 +258,6 @@ def cargar_snapshot() -> tuple:
 
 # ── PRECIOS EDITADOS en Supabase (persistentes) ────────────────────────────
 def _cargar_precios_editados_sb() -> dict:
-    """Carga todos los precios editados desde Supabase."""
     try:
         sb = _get_supabase()
         if not sb:
@@ -271,7 +271,6 @@ def _cargar_precios_editados_sb() -> dict:
         return {}
 
 def _guardar_precio_editado_sb(sku: str, empresa: str, precio: int):
-    """Guarda o actualiza un precio editado en Supabase."""
     try:
         sb = _get_supabase()
         if not sb:
@@ -285,7 +284,6 @@ def _guardar_precio_editado_sb(sku: str, empresa: str, precio: int):
         logger.warning(f"[precios_editados] No se pudo guardar: {e}")
 
 def _eliminar_precio_editado_sb(sku: str, empresa: str):
-    """Elimina un precio editado de Supabase."""
     try:
         sb = _get_supabase()
         if not sb:
@@ -296,7 +294,6 @@ def _eliminar_precio_editado_sb(sku: str, empresa: str):
         logger.warning(f"[precios_editados] No se pudo eliminar: {e}")
 
 def _limpiar_todos_precios_editados_sb():
-    """Elimina todos los precios editados de Supabase."""
     try:
         sb = _get_supabase()
         if not sb:
@@ -318,6 +315,7 @@ class ResultadoScrape:
     imagen:     Optional[str] = None
     estado:     str           = "ok"
     empresa:    str           = ""
+
 # ─────────────────────────────────────────────
 # UTILIDADES
 # ─────────────────────────────────────────────
@@ -346,17 +344,15 @@ def get_empresa(url: str) -> str:
     return (p[-2] if len(p) >= 2 else d).capitalize()
 
 # ─────────────────────────────────────────────
-# FIX 2: Request unificado con manejo SSL + retry automático
+# Request unificado con manejo SSL + retry
 # ─────────────────────────────────────────────
 def _hacer_request(url: str):
     no_verify = any(d in url for d in SSL_IGNORE_DOMAINS)
-
     if any(x in url for x in ["ripley.cl", "falabella.com"]):
         s = cloudscraper.create_scraper(
             browser={"browser": "chrome", "platform": "windows", "mobile": False}
         )
         return s.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT, verify=not no_verify)
-
     if "sodimac.falabella.com" in url or "sodimac.cl" in url:
         try:
             return requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT, verify=not no_verify)
@@ -365,12 +361,10 @@ def _hacer_request(url: str):
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             logger.warning(f"[SSL retry] {url[:70]}")
             return requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT, verify=False)
-
     if no_verify:
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         return requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT, verify=False)
-
     try:
         return requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.SSLError:
@@ -474,18 +468,6 @@ PLAYWRIGHT_DOMAINS = [
     "falabella.com",
 ]
 
-def _limpiar_precio_zara(txt, es_zarahome: bool = False) -> Optional[int]:
-    if txt is None: return None
-    txt = str(txt).replace("$","").replace(" ","").strip()
-    try:
-        if es_zarahome:
-            valor = int(txt.replace(".", "").replace(",", ""))
-        else:
-            valor = int(round(float(txt) * 100))
-        return valor if MIN_PRECIO <= valor <= MAX_PRECIO else None
-    except:
-        return limpiar_precio(txt)
-
 _PW_SCRIPT = r"""
 import sys, json, time, re
 from playwright.sync_api import sync_playwright
@@ -540,17 +522,13 @@ try:
         if es_falabella:
             try:
                 page.goto(url, timeout=35000, wait_until="domcontentloaded")
-            except Exception as e_goto:
-                pass
+            except: pass
             try:
                 page.wait_for_selector(
-                    "[class*='price'], [data-testid*='price'], "
-                    "[class*='Price'], [class*='prices-0'], "
-                    "meta[property='product:price:amount']",
+                    "[class*='price'], [data-testid*='price'], [class*='Price'], [class*='prices-0'], meta[property='product:price:amount']",
                     timeout=10000
                 )
-            except:
-                pass
+            except: pass
             time.sleep(1.5)
         elif es_zara_any:
             page.goto(url, timeout=50000, wait_until="domcontentloaded")
@@ -562,8 +540,7 @@ try:
                 try:
                     page.click(f"[data-product-element-id='{_pelement}']", timeout=3000)
                     time.sleep(1.5)
-                except:
-                    pass
+                except: pass
         elif es_shopify:
             page.goto(url, timeout=45000, wait_until="networkidle")
             try:
@@ -571,19 +548,16 @@ try:
                     "[class*='price'], [class*='Price'], meta[property='product:price:amount']",
                     timeout=10000
                 )
-            except:
-                pass
+            except: pass
             time.sleep(2)
         else:
             page.goto(url, timeout=45000, wait_until="domcontentloaded")
             try:
                 page.wait_for_function(
-                    "() => Array.from(document.querySelectorAll('script[type=\"application/ld+json\"]'))"
-                    ".some(s => s.textContent.includes('price'))",
+                    "() => Array.from(document.querySelectorAll('script[type=\"application/ld+json\"]')).some(s => s.textContent.includes('price'))",
                     timeout=12000
                 )
-            except:
-                pass
+            except: pass
             time.sleep(1.5)
 
         html   = page.content()
@@ -597,8 +571,7 @@ try:
                 content_val = meta_el.get_attribute("content")
                 if content_val:
                     precio = limpiar(content_val, es_zara=es_zara, es_zarahome=es_zarahome)
-        except:
-            pass
+        except: pass
 
         if not precio:
             from bs4 import BeautifulSoup
@@ -608,8 +581,7 @@ try:
             for tag in soup.find_all("script", type="application/ld+json"):
                 raw = tag.string or tag.get_text()
                 if not raw or "price" not in raw.lower(): continue
-                try:
-                    data = _json.loads(raw)
+                try: data = _json.loads(raw)
                 except: continue
                 items = data if isinstance(data, list) else [data]
                 for item in items:
@@ -621,113 +593,60 @@ try:
                         for k in ("price","lowPrice"):
                             p = limpiar(o.get(k), es_zara=es_zara, es_zarahome=es_zarahome)
                             if p: cands.append(p)
-            if cands:
-                precio = min(cands)
+            if cands: precio = min(cands)
 
         if not precio and es_zara_any:
-            zara_selectors = [
-                "[class*='price'] [class*='amount']",
-                "[class*='price-current']",
-                "[class*='money-amount']",
-                "span[class*='price']",
-                "[data-testid='price']",
-                "[class*='price-item']",
-            ]
-            for sel in zara_selectors:
+            for sel in ["[class*='price'] [class*='amount']","[class*='price-current']","[class*='money-amount']","span[class*='price']","[data-testid='price']","[class*='price-item']"]:
                 try:
                     el = page.query_selector(sel)
                     if el:
-                        txt = el.inner_text().strip()
-                        p = limpiar(txt, es_zara=es_zara, es_zarahome=es_zarahome)
-                        if p:
-                            precio = p
-                            break
-                except:
-                    pass
+                        p = limpiar(el.inner_text().strip(), es_zara=es_zara, es_zarahome=es_zarahome)
+                        if p: precio = p; break
+                except: pass
 
         if not precio and es_zara_any:
-            for pattern in [
-                r'"price"\s*:\s*"?([\d\.]+)"?',
-                r'"amount"\s*:\s*"?([\d\.]+)"?',
-                r'CLP\s*([\d\.]+)',
-            ]:
+            for pattern in [r'"price"\s*:\s*"?([\d\.]+)"?', r'"amount"\s*:\s*"?([\d\.]+)"?', r'CLP\s*([\d\.]+)']:
                 m = re.search(pattern, html)
                 if m:
                     p = limpiar(m.group(1), es_zara=es_zara, es_zarahome=es_zarahome)
-                    if p:
-                        precio = p
-                        break
+                    if p: precio = p; break
 
         if not precio and es_falabella:
             next_data_match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
             if next_data_match:
                 try:
                     nd_str = next_data_match.group(1)
-                    for pattern in [
-                        r'"normalPrice"\s*:\s*(\d+)',
-                        r'"offerPrice"\s*:\s*(\d+)',
-                        r'"currentPrice"\s*:\s*(\d+)',
-                        r'"salePrice"\s*:\s*(\d+)',
-                        r'"price"\s*:\s*"?(\d{4,8})"?',
-                    ]:
+                    for pattern in [r'"normalPrice"\s*:\s*(\d+)',r'"offerPrice"\s*:\s*(\d+)',r'"currentPrice"\s*:\s*(\d+)',r'"salePrice"\s*:\s*(\d+)',r'"price"\s*:\s*"?(\d{4,8})"?']:
                         m = re.search(pattern, nd_str)
                         if m:
                             p = limpiar(m.group(1))
-                            if p:
-                                precio = p
-                                break
-                except:
-                    pass
+                            if p: precio = p; break
+                except: pass
 
         if not precio and es_falabella:
-            price_selectors = [
-                "[class*='price-box'] [class*='prices-0']",
-                "[class*='price-box__prices']",
-                "li[class*='prices-0']",
-                "span[class*='copy10']",
-                "[data-testid='price-without-discount']",
-                "[data-testid='price']",
-                "[class*='Price']",
-            ]
-            for sel in price_selectors:
+            for sel in ["[class*='price-box'] [class*='prices-0']","[class*='price-box__prices']","li[class*='prices-0']","span[class*='copy10']","[data-testid='price-without-discount']","[data-testid='price']","[class*='Price']"]:
                 try:
                     el = page.query_selector(sel)
                     if el:
-                        txt = el.inner_text().strip()
-                        p = limpiar(txt)
-                        if p:
-                            precio = p
-                            break
-                except:
-                    pass
+                        p = limpiar(el.inner_text().strip())
+                        if p: precio = p; break
+                except: pass
 
         if not precio and es_falabella:
             cands_regex = []
-            for pattern in [
-                r'"normalPrice"\s*:\s*(\d{4,8})',
-                r'"offerPrice"\s*:\s*(\d{4,8})',
-                r'"currentPrice"\s*:\s*(\d{4,8})',
-                r'"salePrice"\s*:\s*(\d{4,8})',
-                r'"price"\s*:\s*"?(\d{4,8})"?',
-                r':\"(\d{4,8})\",\"currency\":\"CLP\"',
-                r'"listPrice"\s*:\s*(\d{4,8})',
-                r'"sellingPrice"\s*:\s*(\d{4,8})',
-            ]:
+            for pattern in [r'"normalPrice"\s*:\s*(\d{4,8})',r'"offerPrice"\s*:\s*(\d{4,8})',r'"currentPrice"\s*:\s*(\d{4,8})',r'"salePrice"\s*:\s*(\d{4,8})',r'"price"\s*:\s*"?(\d{4,8})"?',r':\"(\d{4,8})\",\"currency\":\"CLP\"',r'"listPrice"\s*:\s*(\d{4,8})',r'"sellingPrice"\s*:\s*(\d{4,8})']:
                 for m in re.finditer(pattern, html):
                     p = limpiar(m.group(1))
                     if p: cands_regex.append(p)
             if cands_regex:
                 from collections import Counter
-                freq = Counter(cands_regex)
-                precio = freq.most_common(1)[0][0]
+                precio = Counter(cands_regex).most_common(1)[0][0]
 
         if not precio:
             try:
                 el = page.query_selector("[data-price]")
-                if el:
-                    precio = limpiar(el.get_attribute("data-price"))
-            except:
-                pass
+                if el: precio = limpiar(el.get_attribute("data-price"))
+            except: pass
 
         try:
             og = page.query_selector("meta[property='og:title']")
@@ -750,22 +669,14 @@ def _scrape_playwright(url: str, empresa: str) -> ResultadoScrape:
     import subprocess, sys, json as _json, tempfile, os
     try:
         with _playwright_sem:
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
-                                             delete=False, encoding="utf-8") as tf:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as tf:
                 tf.write(_PW_SCRIPT)
                 script_path = tf.name
             try:
-                if "zara.com" in url and "zarahome" not in url:
-                    hint = "zara"
-                elif "zarahome.com" in url:
-                    hint = "zarahome"
-                elif "sodimac.falabella.com" in url:
-                    hint = "falabella"
-                elif "falabella.com" in url:
-                    hint = "falabella"
-                else:
-                    hint = "0"
-
+                if "zara.com" in url and "zarahome" not in url: hint = "zara"
+                elif "zarahome.com" in url: hint = "zarahome"
+                elif "falabella.com" in url: hint = "falabella"
+                else: hint = "0"
                 result = subprocess.run(
                     [sys.executable, script_path, url, hint],
                     capture_output=True, text=True, timeout=75
@@ -777,18 +688,14 @@ def _scrape_playwright(url: str, empresa: str) -> ResultadoScrape:
                 data = _json.loads(output)
             finally:
                 os.unlink(script_path)
-
         precio_num = data.get("precio")
         nombre     = data.get("nombre")
         imagen     = data.get("imagen")
         precio_txt = ("$" + fmt(precio_num)) if precio_num else None
-        logger.info(f"[Playwright] ${precio_num} <- {url[:70]}")
         return ResultadoScrape(url=url, nombre=nombre, precio_txt=precio_txt,
                                precio_num=precio_num, imagen=imagen,
-                               estado="ok" if precio_num else "sin_precio",
-                               empresa=empresa)
+                               estado="ok" if precio_num else "sin_precio", empresa=empresa)
     except subprocess.TimeoutExpired:
-        logger.error(f"[Playwright] timeout <- {url[:70]}")
         return ResultadoScrape(url=url, estado="error", empresa=empresa)
     except Exception as e:
         logger.error(f"[Playwright] {e} <- {url[:70]}")
@@ -836,11 +743,9 @@ def _scrape_con_requests_cached(url: str) -> ResultadoScrape:
         imagen     = _extraer_imagen(soup, url)
         return ResultadoScrape(url=url, nombre=nombre, precio_txt=precio_txt,
                                precio_num=precio_num, imagen=imagen, estado="ok", empresa=empresa)
-    except requests.exceptions.SSLError as ssl_err:
-        logger.warning(f"[SSL no manejado] Reintentando sin verificación: {url[:70]}")
+    except requests.exceptions.SSLError:
         try:
-            import urllib3
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            import urllib3; urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             r = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT, verify=False)
             soup = BeautifulSoup(r.text, "html.parser")
             og = soup.find("meta", property="og:title")
@@ -851,11 +756,8 @@ def _scrape_con_requests_cached(url: str) -> ResultadoScrape:
             for nombre_est, fn in ESTRATEGIAS:
                 try:
                     precio_num = fn(soup=soup, html=r.text, url=url)
-                    if precio_num:
-                        logger.info(f"[{nombre_est}+SSLretry] ${precio_num} <- {url[:60]}")
-                        break
-                except Exception as e:
-                    logger.warning(f"[{nombre_est}] {e}")
+                    if precio_num: break
+                except: pass
             precio_txt = ("$" + fmt(precio_num)) if precio_num else None
             imagen     = _extraer_imagen(soup, url)
             return ResultadoScrape(url=url, nombre=nombre, precio_txt=precio_txt,
@@ -921,15 +823,13 @@ def _r_margen(margen_pct, precio_form: Optional[int]) -> str:
         monto = int(precio_form * m)
         return (f'<span class="price-pill">${fmt(monto)}'
                 f'<br><span style="font-size:0.68rem;color:#5a5a5a">{m*100:.1f}%</span></span>')
-    except Exception:
+    except:
         return '<span class="status-none">—</span>'
 
 # ─────────────────────────────────────────────
 # REPORTE EXCEL
 # ─────────────────────────────────────────────
-_Y  = "F5D000"; _BK = "111111"; _W  = "FFFFFF"
-_GL = "F2F2F0"; _GN = "1A9E6E"; _RD = "D93A3A"
-_GM = "5A5A5A"; _YB = "FDF9E3"
+_Y="F5D000"; _BK="111111"; _W="FFFFFF"; _GL="F2F2F0"; _GN="1A9E6E"; _RD="D93A3A"; _GM="5A5A5A"
 
 def _xfill(c): return PatternFill("solid", start_color=c, end_color=c)
 def _xfont(bold=False, color=_BK, size=10, italic=False):
@@ -968,28 +868,20 @@ def _rpt_tabla(wb, df):
                 if m > 1: m = m / 100
                 margen_pct_val = m
         except: pass
-        if pc is None:      estado = "Sin precio"
-        elif dn and dn > 0: estado = "Sobre precio competencia"
-        elif dn and dn < 0: estado = "Bajo precio competencia"
-        else:               estado = "Igual"
-
+        if pc is None:          estado = "Sin precio"
+        elif dn and dn > 0:     estado = "Sobre precio competencia"
+        elif dn and dn < 0:     estado = "Bajo precio competencia"
+        else:                   estado = "Igual"
         nombre_prod = _xstrip(str(row.get("_nombre","")))
         nombre_comp = _xstrip(str(row.get("Producto Comp.","")))
         url_form    = str(row.get("_url_form","")) if row.get("_url_form") else ""
         url_comp    = str(row.get("_url_comp","")) if row.get("_url_comp") else ""
-
         vals = [
-            row.get("_sku",""),
-            _xstrip(str(row.get("_rubro",""))),
-            nombre_prod,
-            pf or "—",
-            row.get("_empresa",""),
-            nombre_comp,
-            pc or "—",
+            row.get("_sku",""), _xstrip(str(row.get("_rubro",""))), nombre_prod,
+            pf or "—", row.get("_empresa",""), nombre_comp, pc or "—",
             dn if dn is not None else "—",
             (dp/100) if dp is not None else "—",
-            margen_pct_val if margen_pct_val is not None else "—",
-            estado,
+            margen_pct_val if margen_pct_val is not None else "—", estado,
         ]
         for ci, v in enumerate(vals, 1):
             c = ws.cell(row=r, column=ci, value=v)
@@ -1010,17 +902,10 @@ def _rpt_tabla(wb, df):
                     color=_GN if v=="Sobre precio competencia" else _RD if v=="Bajo precio competencia" else _GM)
             else:
                 c.font = _xfont(size=8)
-
-            # ── HIPERVÍNCULOS en nombres de producto ──
             if ci == 3 and url_form:
-                c.hyperlink = url_form
-                c.font = _xfont(size=8, color="0563C1")
-                c.alignment = _xalign("left")
+                c.hyperlink = url_form; c.font = _xfont(size=8, color="0563C1"); c.alignment = _xalign("left")
             elif ci == 6 and url_comp:
-                c.hyperlink = url_comp
-                c.font = _xfont(size=8, color="0563C1")
-                c.alignment = _xalign("left")
-
+                c.hyperlink = url_comp; c.font = _xfont(size=8, color="0563C1"); c.alignment = _xalign("left")
         _xrh(ws, r, 15)
     ws.freeze_panes = "A2"; ws.auto_filter.ref = f"A1:K{r}"
     _xcw(ws, {"A":10,"B":13,"C":28,"D":13,"E":13,"F":26,"G":13,"H":13,"I":8,"J":9,"K":12})
@@ -1036,21 +921,19 @@ def _rpt_resumen_sku(wb, df, df_excel):
         c.font = _xfont(True, _BK, 9); c.fill = _xfill(_Y)
         c.alignment = _xalign("center"); c.border = _xborder(_Y)
     _xrh(ws, r, 22)
-
     for i, (sku, grp) in enumerate(df.groupby("_sku")):
         r += 1; bg = _GL if i % 2 == 0 else _W
         nombre  = _xstrip(str(grp["_nombre"].iloc[0]))
         rubro   = _xstrip(str(grp["_rubro"].iloc[0]))
         pf      = grp["_precio_form"].dropna().iloc[0] if grp["_precio_form"].notna().any() else None
-        precios_comp = grp["_precio_comp"].dropna().tolist()
-        precios_comp = [float(p) for p in precios_comp if p]
+        precios_comp = [float(p) for p in grp["_precio_comp"].dropna().tolist() if p]
         prom_comp  = int(sum(precios_comp)/len(precios_comp)) if precios_comp else None
         min_comp   = min(precios_comp) if precios_comp else None
         rival_min  = "—"
         if min_comp:
             fila_min = grp[grp["_precio_comp"] == min_comp]
             if not fila_min.empty: rival_min = fila_min["_empresa"].iloc[0]
-        vs_prom    = (pf - prom_comp) if pf and prom_comp else None
+        vs_prom     = (pf - prom_comp) if pf and prom_comp else None
         vs_prom_pct = (vs_prom / prom_comp) if vs_prom and prom_comp else None
         margen_pct_val = None; cobertura_val = None
         rows_ex = df_excel[df_excel["SKU"].astype(str) == str(sku)]
@@ -1065,21 +948,17 @@ def _rpt_resumen_sku(wb, df, df_excel):
                 cv = rows_ex.iloc[0].get("Cobertura")
                 if cv is not None and str(cv).strip() != "": cobertura_val = float(cv)
             except: pass
-        if not precios_comp:     posicion = "Sin datos"
-        elif not pf:             posicion = "Sin precio Form"
-        elif pf <= min_comp:     posicion = "Más barato"
-        elif pf <= prom_comp:    posicion = "Bajo promedio"
-        else:                    posicion = "Sobre promedio"
-
-        vals = [sku, nombre, rubro,
-                pf or "—", prom_comp or "—",
+        if not precios_comp:    posicion = "Sin datos"
+        elif not pf:            posicion = "Sin precio Form"
+        elif pf <= min_comp:    posicion = "Más barato"
+        elif pf <= prom_comp:   posicion = "Bajo promedio"
+        else:                   posicion = "Sobre promedio"
+        vals = [sku, nombre, rubro, pf or "—", prom_comp or "—",
                 vs_prom if vs_prom is not None else "—",
                 vs_prom_pct if vs_prom_pct is not None else "—",
-                rival_min, min_comp or "—",
-                len(precios_comp),
+                rival_min, min_comp or "—", len(precios_comp),
                 margen_pct_val if margen_pct_val is not None else "—",
-                cobertura_val if cobertura_val is not None else "—",
-                posicion]
+                cobertura_val if cobertura_val is not None else "—", posicion]
         for ci, v in enumerate(vals, 1):
             c = ws.cell(row=r, column=ci, value=v)
             c.fill = _xfill(bg); c.border = _xborder()
@@ -1087,21 +966,18 @@ def _rpt_resumen_sku(wb, df, df_excel):
             if ci in (4,5,9) and isinstance(v,(int,float)):
                 c.font = _xfont(size=8); c.number_format = '$#,##0'
             elif ci == 6 and isinstance(v,(int,float)):
-                c.font = _xfont(bold=True, size=8,
-                    color=_GN if v>0 else _RD if v<0 else _GM)
+                c.font = _xfont(bold=True, size=8, color=_GN if v>0 else _RD if v<0 else _GM)
                 c.number_format = '$#,##0'
             elif ci in (7,11) and isinstance(v, float):
                 c.font = _xfont(size=8); c.number_format = '0.0%'
             elif ci == 13:
-                col_pos = _GN if v=="Más barato" else _RD if v=="Sobre promedio" else _GM
-                c.font = _xfont(bold=True, size=8, color=col_pos)
+                c.font = _xfont(bold=True, size=8,
+                    color=_GN if v=="Más barato" else _RD if v=="Sobre promedio" else _GM)
             else:
                 c.font = _xfont(size=8)
         _xrh(ws, r, 15)
-
     ws.freeze_panes = "A2"; ws.auto_filter.ref = f"A1:M{r}"
-    _xcw(ws, {"A":10,"B":28,"C":14,"D":13,"E":14,"F":13,"G":9,
-              "H":16,"I":13,"J":8,"K":9,"L":10,"M":14})
+    _xcw(ws, {"A":10,"B":28,"C":14,"D":13,"E":14,"F":13,"G":9,"H":16,"I":13,"J":8,"K":9,"L":10,"M":14})
 
 def generar_reporte(df_final: pd.DataFrame, df_excel: pd.DataFrame) -> bytes:
     wb = Workbook()
@@ -1109,6 +985,46 @@ def generar_reporte(df_final: pd.DataFrame, df_excel: pd.DataFrame) -> bytes:
     _rpt_resumen_sku(wb, df_final, df_excel)
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf.getvalue()
+
+# ─────────────────────────────────────────────
+# GENERA EXCEL CON PRECIOS EDITADOS APLICADOS
+# Se llama en el momento exacto del render del botón.
+# precios_editados ya está en session_state y correcto
+# porque la tabla los muestra bien → el Excel usará lo mismo.
+# ─────────────────────────────────────────────
+def _aplicar_precios_editados_a_df(df_base: pd.DataFrame, precios_editados: dict) -> pd.DataFrame:
+    """
+    Fuente de verdad única: aplica SIEMPRE precios_editados sobre df_base.
+    Usada tanto para la tabla visual como para el Excel — misma lógica, mismo resultado.
+    """
+    df_out = df_base.copy()
+    for idx, row in df_out.iterrows():
+        key = (str(row.get("_sku", "")).strip(), str(row.get("_empresa", "")).strip())
+        if key in precios_editados:
+            nuevo_pc = precios_editados[key]
+            pf = row.get("_precio_form")
+            try:
+                pf = int(pf) if pf not in (None, "", "nan") and str(pf) != "nan" else None
+            except:
+                pf = None
+            dif_nuevo = (pf - nuevo_pc) if pf and nuevo_pc else None
+            df_out.at[idx, "_precio_comp"] = nuevo_pc
+            df_out.at[idx, "_dif_num"] = dif_nuevo
+            if "Precio Comp." in df_out.columns:
+                df_out.at[idx, "Precio Comp."] = (
+                    f'<span class="price-pill price-editado">${fmt(nuevo_pc)}'
+                    f'<span class="editado-tag">✎ editado</span></span>'
+                )
+            if "Diferencia" in df_out.columns:
+                df_out.at[idx, "Diferencia"] = r_dif(dif_nuevo)
+    return df_out
+
+
+def _generar_excel_con_ediciones() -> bytes:
+    df_base = st.session_state["df_final"].copy()
+    precios_editados = st.session_state.get("precios_editados", {})
+    df_rep = _aplicar_precios_editados_a_df(df_base, precios_editados)
+    return generar_reporte(df_rep, df)
 
 # ─────────────────────────────────────────────
 # MODAL DE ANÁLISIS SKU
@@ -1137,11 +1053,9 @@ def render_modal_sku(sku: str, filas_sku: list[dict], df_excel_row):
 
     precio_activo = st.session_state[sim_key] or precio_form_original
     es_simulado   = (precio_activo != precio_form_original) and precio_form_original
-
     vs_prom = (precio_activo - prom_comp) if precio_activo and prom_comp else None
 
-    margen_txt = "—"
-    margen_sim_txt = None
+    margen_txt = "—"; margen_sim_txt = None
     if margen_pct is not None:
         try:
             m = float(margen_pct)
@@ -1214,19 +1128,12 @@ def render_modal_sku(sku: str, filas_sku: list[dict], df_excel_row):
     st.number_input(
         "Nuevo precio a simular",
         min_value=1000, max_value=10_000_000,
-        value=_p_sim_actual,
-        step=1000,
-        key=f"sim_input_{sku}",
-        format="%d",
+        value=_p_sim_actual, step=1000,
+        key=f"sim_input_{sku}", format="%d",
         on_change=_on_sim_change,
     )
-
     if not _es_original:
-        if st.button(
-            f"↩ Volver al precio original  ${fmt(_p_ori_int)}",
-            key=f"sim_reset_{sku}",
-            type="secondary",
-        ):
+        if st.button(f"↩ Volver al precio original  ${fmt(_p_ori_int)}", key=f"sim_reset_{sku}", type="secondary"):
             st.session_state[sim_key] = precio_form_original
             if f"sim_input_{sku}" in st.session_state:
                 del st.session_state[f"sim_input_{sku}"]
@@ -1251,7 +1158,7 @@ def render_modal_sku(sku: str, filas_sku: list[dict], df_excel_row):
         """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# CARGA EXCEL
+# CARGA EXCEL BASE
 # ─────────────────────────────────────────────
 try:
     df = pd.read_excel(RUTA_EXCEL)
@@ -1270,28 +1177,14 @@ if "precios_editados" not in st.session_state:
 # RECEPTOR DE EDICIONES DE PRECIO (query_params)
 # ─────────────────────────────────────────────
 _qp = st.query_params
-if "edit_sku" in _qp and "edit_emp" in _qp and "edit_pc" in _qp:
+# Query params no se usan para edición (la edición es via panel nativo)
+if "reset_sku" in _qp and "reset_emp" in _qp:
     try:
-        _k = (str(_qp["edit_sku"]), str(_qp["edit_emp"]))
-        _v = int(_qp["edit_pc"])
-        _was_vista = MODO_VISTA
-        if _v > 0:
-            st.session_state["precios_editados"][_k] = _v
-            _guardar_precio_editado_sb(_k[0], _k[1], _v)
+        _sku_r = str(_qp["reset_sku"]).strip()
+        _emp_r = str(_qp["reset_emp"]).strip()
+        st.session_state["precios_editados"].pop((_sku_r, _emp_r), None)
+        _eliminar_precio_editado_sb(_sku_r, _emp_r)
         st.query_params.clear()
-        if _was_vista:
-            st.query_params["modo"] = "vista"
-        st.rerun()
-    except: pass
-elif "reset_sku" in _qp and "reset_emp" in _qp:
-    try:
-        _k = (str(_qp["reset_sku"]), str(_qp["reset_emp"]))
-        _was_vista = MODO_VISTA
-        st.session_state["precios_editados"].pop(_k, None)
-        _eliminar_precio_editado_sb(_k[0], _k[1])
-        st.query_params.clear()
-        if _was_vista:
-            st.query_params["modo"] = "vista"
         st.rerun()
     except: pass
 
@@ -1361,7 +1254,7 @@ with col_dif:
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# PROCESO
+# PROCESO DE SCRAPE
 # ─────────────────────────────────────────────
 if actualizar:
     _scrape_con_requests_cached.clear()
@@ -1384,9 +1277,9 @@ if actualizar:
         for col in columnas_comp:
             url_comp = str(row.get(col,"")) if pd.notna(row.get(col)) else ""
             if not url_comp: continue
-            res_comp = cache_res.get(url_comp, ResultadoScrape(url=url_comp))
-            prev     = precio_anterior(sku, url_comp)
-            dif      = ((res_form.precio_num - res_comp.precio_num) if res_form.precio_num and res_comp.precio_num else None)
+            res_comp    = cache_res.get(url_comp, ResultadoScrape(url=url_comp))
+            prev        = precio_anterior(sku, url_comp)
+            dif         = ((res_form.precio_num - res_comp.precio_num) if res_form.precio_num and res_comp.precio_num else None)
             cambio_html = r_cambio(res_comp.precio_num, prev)
             precio_comp_html = r_precio(res_comp.precio_txt) + (f"<br>{cambio_html}" if cambio_html else "")
             filas_db.append({"sku":sku,"url":url_comp,"empresa":res_comp.empresa,"precio":res_comp.precio_num,"estado":res_comp.estado})
@@ -1394,43 +1287,41 @@ if actualizar:
                 "_sku": sku, "_nombre": nom_excel or res_form.nombre or sku,
                 "_empresa": res_comp.empresa, "_rubro": rubro, "_dif_num": dif,
                 "_precio_form": res_form.precio_num, "_precio_comp": res_comp.precio_num,
-                "_url_form": url_form,
-                "_url_comp": url_comp,
-                "_row_excel": row.to_dict(),
+                "_url_form": url_form, "_url_comp": url_comp, "_row_excel": row.to_dict(),
                 "_busqueda": f"{sku} {nom_excel or ''} {res_form.nombre or ''} {res_comp.nombre or ''} {rubro or ''}".lower(),
-                "SKU":          f'<span class="sku-btn" data-sku="{sku}">{sku}</span>' if sku else "",
-                "Rubro":        f'<span class="rubro-tag">{rubro}</span>' if rubro else "",
-                "Foto":         r_img(res_form.imagen, url_form, 48),
-                "Producto":     r_nombre(nom_excel or res_form.nombre, url_form),
+                "SKU":            f'<span class="sku-btn" data-sku="{sku}">{sku}</span>' if sku else "",
+                "Rubro":          f'<span class="rubro-tag">{rubro}</span>' if rubro else "",
+                "Foto":           r_img(res_form.imagen, url_form, 48),
+                "Producto":       r_nombre(nom_excel or res_form.nombre, url_form),
                 "Precio Nuestro": r_precio(res_form.precio_txt, nuestro=True),
-                "Tienda":       f'<span class="empresa-tag">{res_comp.empresa}</span>',
-                "Foto Comp.":   r_img(res_comp.imagen, url_comp, 48),
+                "Tienda":         f'<span class="empresa-tag">{res_comp.empresa}</span>',
+                "Foto Comp.":     r_img(res_comp.imagen, url_comp, 48),
                 "Producto Comp.": r_nombre(res_comp.nombre, url_comp),
-                "Precio Comp.": precio_comp_html,
-                "Diferencia":   r_dif(dif),
-                "Margen":       _r_margen(row.get("Margen"), res_form.precio_num),
+                "Precio Comp.":   precio_comp_html,
+                "Diferencia":     r_dif(dif),
+                "Margen":         _r_margen(row.get("Margen"), res_form.precio_num),
             })
     guardar_precios(filas_db)
-    _df_nuevo   = pd.DataFrame(filas)
-    _ts_nuevo   = time.strftime("%d/%m/%Y %H:%M:%S")
-    # Aplicar precios editados de Supabase al nuevo scrape
+    _df_nuevo = pd.DataFrame(filas)
+    _ts_nuevo = time.strftime("%d/%m/%Y %H:%M:%S")
+
+    # Aplicar precios editados persistentes sobre el nuevo scrape
     _pe = st.session_state.get("precios_editados", {})
     if _pe:
         for idx_r, row in _df_nuevo.iterrows():
             k = (str(row.get("_sku","")), str(row.get("_empresa","")))
             if k in _pe:
-                nuevo_pc = _pe[k]
-                pf = row.get("_precio_form")
-                _df_nuevo.at[idx_r, "_precio_comp"] = nuevo_pc
+                nuevo_pc  = _pe[k]
+                pf        = row.get("_precio_form")
                 dif_nueva = (pf - nuevo_pc) if pf and nuevo_pc else None
-                _df_nuevo.at[idx_r, "_dif_num"] = dif_nueva
-                # ✅ FIX: actualizar también las columnas HTML para que la tabla y el reporte reflejen el precio editado
-                precio_txt_nuevo = "$" + fmt(nuevo_pc)
+                _df_nuevo.at[idx_r, "_precio_comp"] = nuevo_pc
+                _df_nuevo.at[idx_r, "_dif_num"]     = dif_nueva
                 _df_nuevo.at[idx_r, "Precio Comp."] = (
-                    f'<span class="price-pill price-editado">{precio_txt_nuevo}'
+                    f'<span class="price-pill price-editado">${fmt(nuevo_pc)}'
                     f'<span class="editado-tag">✎ editado</span></span>'
                 )
                 _df_nuevo.at[idx_r, "Diferencia"] = r_dif(dif_nueva)
+
     st.session_state["df_final"]  = _df_nuevo
     st.session_state["timestamp"] = _ts_nuevo
     st.session_state["sku_modal"] = None
@@ -1442,12 +1333,13 @@ if actualizar:
 # ─────────────────────────────────────────────
 if "df_final" in st.session_state:
     df_vis = st.session_state["df_final"].copy()
-    if filtro_rubro:   df_vis = df_vis[df_vis["_rubro"].isin(filtro_rubro)]
-    if filtro_empresa: df_vis = df_vis[df_vis["_empresa"].isin(filtro_empresa)]
-    if filtro_dif == "Comp. más caro":    df_vis = df_vis[df_vis["_dif_num"].notna() & (df_vis["_dif_num"] > 0)]
+    if filtro_rubro:    df_vis = df_vis[df_vis["_rubro"].isin(filtro_rubro)]
+    if filtro_empresa:  df_vis = df_vis[df_vis["_empresa"].isin(filtro_empresa)]
+    if filtro_dif == "Comp. más caro":     df_vis = df_vis[df_vis["_dif_num"].notna() & (df_vis["_dif_num"] > 0)]
     elif filtro_dif == "Comp. más barato": df_vis = df_vis[df_vis["_dif_num"].notna() & (df_vis["_dif_num"] < 0)]
     elif filtro_dif == "Igual":            df_vis = df_vis[df_vis["_dif_num"].notna() & (df_vis["_dif_num"] == 0)]
-    total = len(df_vis)
+
+    total     = len(df_vis)
     mas_caros = int((df_vis["_dif_num"] > 0).sum())
     mas_bar   = int((df_vis["_dif_num"] < 0).sum())
     sin_p     = int(df_vis["_precio_comp"].isna().sum())
@@ -1460,45 +1352,32 @@ if "df_final" in st.session_state:
     </div>
     """, unsafe_allow_html=True)
 
-    # Regenerar Excel siempre con precios editados actuales
-    precios_ed = st.session_state.get("precios_editados", {})
-    df_reporte = st.session_state["df_final"].copy()
 
-    if precios_ed:
-        # Construir lookup normalizado para evitar problemas de tipo/espacios
-        lookup_ed = {
-            (str(sku).strip(), str(emp).strip()): int(pc)
-            for (sku, emp), pc in precios_ed.items()
-        }
-        for idx_r, row in df_reporte.iterrows():
-            k = (str(row.get("_sku","")).strip(), str(row.get("_empresa","")).strip())
-            if k in lookup_ed:
-                nuevo_pc = lookup_ed[k]
-                pf_raw = row.get("_precio_form")
-                try:
-                    pf = int(pf_raw) if pf_raw is not None and str(pf_raw) not in ("", "nan", "None") else None
-                except:
-                    pf = None
-                dif_nueva = (pf - nuevo_pc) if pf and nuevo_pc else None
-                df_reporte.at[idx_r, "_precio_comp"] = nuevo_pc
-                df_reporte.at[idx_r, "_dif_num"]     = dif_nueva
-
-    xlsx_bytes = generar_reporte(df_reporte, df)
-    nombre_archivo = f"reporte_precios_{time.strftime('%Y%m%d_%H%M')}.xlsx"
-    st.download_button(
-        label="⬇  Descargar Reporte",
-        data=xlsx_bytes,
-        file_name=nombre_archivo,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key=f"dl_reporte_{hash(str(sorted(precios_ed.items())))}",
-    )
 
     import streamlit.components.v1 as components
-    sku_nombre_map = (df_vis[["_sku","_nombre"]].drop_duplicates("_sku").set_index("_sku")["_nombre"].to_dict())
+
+    # ── APLICAR EDITS A df_vis PRIMERO (antes del modal y la tabla) ────────────
+    _precios_ed = st.session_state.get("precios_editados", {})
+    for _idx_v, _row_v in df_vis.iterrows():
+        _key_v = (str(_row_v.get("_sku","")), str(_row_v.get("_empresa","")))
+        if _key_v in _precios_ed:
+            _pc_v = _precios_ed[_key_v]
+            _pf_v = _row_v.get("_precio_form")
+            _dif_v = (_pf_v - _pc_v) if _pf_v and _pc_v else None
+            df_vis.at[_idx_v, "_precio_comp"] = _pc_v
+            df_vis.at[_idx_v, "_dif_num"]     = _dif_v
+            df_vis.at[_idx_v, "Precio Comp."] = (
+                f'<span class="price-pill price-editado">${fmt(_pc_v)}'
+                f'<span class="editado-tag">✎ editado</span></span>'
+            )
+            df_vis.at[_idx_v, "Diferencia"] = r_dif(_dif_v)
+
+    # ── MODAL SKU (ahora usa df_vis ya con edits aplicados) ───────────────────
+    sku_nombre_map   = df_vis[["_sku","_nombre"]].drop_duplicates("_sku").set_index("_sku")["_nombre"].to_dict()
     opciones_display = {f"{v}  ({k})": k for k, v in sku_nombre_map.items()}
     opciones_lista   = ["— ninguno —"] + sorted(opciones_display.keys())
     sel_display = st.selectbox("📊 Seleccionar producto para análisis (escribe para buscar)", opciones_lista, index=0, key="sku_selectbox")
-    sku_activo = None if sel_display == "— ninguno —" else opciones_display.get(sel_display)
+    sku_activo  = None if sel_display == "— ninguno —" else opciones_display.get(sel_display)
     if sku_activo and sku_activo in df_vis["_sku"].values:
         filas_sku  = df_vis[df_vis["_sku"] == sku_activo].to_dict("records")
         rows_match = df[df["SKU"].astype(str) == str(sku_activo)]
@@ -1506,264 +1385,137 @@ if "df_final" in st.session_state:
         with st.expander(f"📊 {sku_nombre_map.get(sku_activo, sku_activo)}", expanded=True):
             render_modal_sku(sku_activo, filas_sku, row_excel)
 
-    for idx, row in df_vis.iterrows():
-        key = (str(row.get("_sku","")), str(row.get("_empresa","")))
-        if key in st.session_state["precios_editados"]:
-            nuevo_pc = st.session_state["precios_editados"][key]
-            pf = row.get("_precio_form")
-            df_vis.at[idx, "_precio_comp"] = nuevo_pc
-            df_vis.at[idx, "_dif_num"] = (pf - nuevo_pc) if pf and nuevo_pc else None
-            precio_txt_nuevo = "$" + fmt(nuevo_pc)
-            df_vis.at[idx, "Precio Comp."] = (
-                f'<span class="price-pill price-editado">{precio_txt_nuevo}'
-                f'<span class="editado-tag">✎ editado</span></span>'
-            )
-            dif_nuevo = (pf - nuevo_pc) if pf and nuevo_pc else None
-            df_vis.at[idx, "Diferencia"] = r_dif(dif_nuevo)
+    # 2. Aplicar a df_excel (reporte) — misma key exacta, sobre df_final completo sin filtros
+    _df_excel = st.session_state["df_final"].copy()
+    for _idx_e, _row_e in _df_excel.iterrows():
+        _key_e = (str(_row_e.get("_sku","")), str(_row_e.get("_empresa","")))
+        if _key_e in _precios_ed:
+            _pc_e = _precios_ed[_key_e]
+            _pf_e = _row_e.get("_precio_form")
+            try:
+                _pf_e = int(_pf_e) if _pf_e not in (None,"","nan") and str(_pf_e)!="nan" else None
+            except:
+                _pf_e = None
+            _df_excel.at[_idx_e, "_precio_comp"] = _pc_e
+            _df_excel.at[_idx_e, "_dif_num"]     = (_pf_e - _pc_e) if _pf_e else None
 
-    n_filas = len(df_vis); ROW_H = 48; HEADER_H = 40; SEARCH_H = 48
-    altura_scroll = min(520, max(180, HEADER_H + n_filas * ROW_H))
-    altura_total  = SEARCH_H + altura_scroll
+    # 3. Botón — usa _df_excel que acabamos de construir aquí mismo
+    _excel_bytes = generar_reporte(_df_excel, df)
+    st.download_button(
+        label="⬇  Descargar Reporte",
+        data=_excel_bytes,
+        file_name=f"reporte_precios_{time.strftime('%Y%m%d_%H%M')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key=f"dl_{len(_precios_ed)}",
+    )
+
+    # ── TABLA CON EDICIÓN NATIVA (declare_component) ─────────────────────────
+    import os as _os
+    _comp_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "table_component")
+    _tabla_comp = components.declare_component("price_table", path=_comp_path)
 
     import json as _json
     def _si(v):
-        try:
-            f = float(v); return int(f) if f == f else 0
+        try: f = float(v); return int(f) if f == f else 0
         except: return 0
 
-    filas_data = []
-    for fila in df_vis.to_dict("records"):
-        filas_data.append({
-            "sku":     str(fila.get("_sku","")),
-            "empresa": str(fila.get("_empresa","")),
-            "pf":      _si(fila.get("_precio_form")),
-            "pc":      _si(fila.get("_precio_comp")),
+    _filas_comp = []
+    for _fc_fila in df_vis.to_dict("records"):
+        _fc_sku = _fc_fila.get("_sku","")
+        _fc_emp = _fc_fila.get("_empresa","")
+        _fc_key = (_fc_sku, _fc_emp)
+        _fc_pc  = _si(_fc_fila.get("_precio_comp"))
+        _filas_comp.append({
+            "_sku":         _fc_sku,
+            "_empresa":     _fc_emp,
+            "_nombre":      str(_fc_fila.get("_nombre","")),
+            "_rubro":       str(_fc_fila.get("_rubro","")),
+            "_precio_form": _si(_fc_fila.get("_precio_form")),
+            "_precio_comp": _fc_pc,
+            "_editado":     _fc_key in _precios_ed,
+            "Rubro":        _fc_fila.get("Rubro",""),
+            "Foto":         _fc_fila.get("Foto",""),
+            "Producto":     _fc_fila.get("Producto",""),
+            "Precio Nuestro": _fc_fila.get("Precio Nuestro",""),
+            "Tienda":       _fc_fila.get("Tienda",""),
+            "Foto Comp.":   _fc_fila.get("Foto Comp.",""),
+            "Producto Comp.": _fc_fila.get("Producto Comp.",""),
+            "Precio Comp.": _fc_fila.get("Precio Comp.",""),
+            "Diferencia":   _fc_fila.get("Diferencia",""),
+            "Margen":       _fc_fila.get("Margen",""),
         })
-    filas_data_json = _json.dumps(filas_data)
 
-    filas_html = ""
-    for i, fila in enumerate(df_vis.to_dict("records")):
-        sku = fila.get("_sku",""); activo = (sku == sku_activo)
-        empresa = fila.get("_empresa","")
-        sku_badge = f'<span class="sku-badge sku-activo">✦ {sku}</span>' if activo else f'<span class="sku-badge">{sku}</span>'
-        busq = f"{sku} {fila.get('_nombre','')} {fila.get('_rubro','')} {empresa}".lower()
-        pc_raw = _si(fila.get("_precio_comp"))
-        pf_raw = _si(fila.get("_precio_form"))
-        filas_html += f"""
-        <tr{' class="fila-activa"' if activo else ''} data-search="{busq}" data-idx="{i}" data-sku="{sku}" data-empresa="{empresa}" data-pf="{pf_raw}">
-          <td class="sku-td">{sku_badge}</td>
-          <td>{fila.get('Rubro','')}</td><td>{fila.get('Foto','')}</td>
-          <td>{fila.get('Producto','')}</td><td>{fila.get('Precio Nuestro','')}</td>
-          <td>{fila.get('Tienda','')}</td><td>{fila.get('Foto Comp.','')}</td>
-          <td>{fila.get('Producto Comp.','')}</td>
-          <td class="td-precio-comp" data-pc="{pc_raw}" ondblclick="editarPrecio(this)">{fila.get('Precio Comp.','')}</td>
-          <td class="td-dif">{fila.get('Diferencia','')}</td>
-          <td>{fila.get('Margen','')}</td>
-        </tr>"""
+    n_filas = len(_filas_comp); ROW_H = 48; HEADER_H = 40; SEARCH_H = 48
+    altura_scroll = min(520, max(180, HEADER_H + n_filas * ROW_H))
+    altura_total  = SEARCH_H + altura_scroll + 4
 
-    tabla_html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
-      *{{box-sizing:border-box;margin:0;padding:0}}
-      body{{font-family:'DM Sans',sans-serif;background:transparent;overflow:hidden}}
-      .outer{{border:1px solid #e4e4e4;border-radius:12px;overflow:hidden;background:#fff;}}
-      .search-bar{{height:{SEARCH_H}px;display:flex;align-items:center;padding:0 14px;border-bottom:1px solid #e4e4e4;background:#fafaf8;gap:8px;}}
-      .search-bar svg{{flex-shrink:0;opacity:0.4}}
-      .search-bar input{{flex:1;border:none;outline:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:0.84rem;color:#111;}}
-      .search-bar input::placeholder{{color:#aaa}}
-      .result-count{{font-size:0.7rem;color:#aaa;white-space:nowrap;font-family:'DM Mono',monospace;}}
-      .scroll-wrap{{height:{altura_scroll}px;overflow-y:auto;overflow-x:auto;}}
-      .scroll-wrap::-webkit-scrollbar{{width:5px;height:5px}}
-      .scroll-wrap::-webkit-scrollbar-track{{background:#f2f2f0}}
-      .scroll-wrap::-webkit-scrollbar-thumb{{background:#ddd;border-radius:3px}}
-      table{{border-collapse:collapse;font-size:0.82rem;min-width:820px;width:100%}}
-      thead th{{position:sticky;top:0;z-index:20;background:#fff;height:{HEADER_H}px;padding:0 12px;text-align:left;font-size:0.63rem;font-weight:700;color:#5a5a5a;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap;border-bottom:2px solid #F5D000;}}
-      th.sku-th,td.sku-td{{position:sticky;left:0;z-index:15;background:#fff;width:130px;min-width:130px;border-right:1px solid #ebebeb;}}
-      thead th.sku-th{{z-index:25}}
-      tbody tr:hover td.sku-td{{background:#fafaf8}}
-      tbody tr.fila-activa td.sku-td{{background:#fffde7}}
-      tbody tr td{{height:{ROW_H}px;padding:0 12px;border-bottom:1px solid #f0f0ee;vertical-align:middle;color:#2e2e2e}}
-      tbody tr:last-child td{{border-bottom:none}}
-      tbody tr:hover td{{background:#fafaf8}}
-      tbody tr.fila-activa td{{background:#fffde7}}
-      tbody tr.hidden{{display:none}}
-      .sku-badge{{display:inline-block;background:#111;color:#F5D000;padding:3px 9px;border-radius:4px;font-family:'DM Mono',monospace;font-size:0.7rem;font-weight:600;white-space:nowrap}}
-      .sku-activo{{background:#F5D000!important;color:#111!important}}
-      .price-pill{{display:inline-block;background:#f2f2f0;border:1px solid #e4e4e4;border-radius:5px;padding:3px 8px;font-family:'DM Mono',monospace;font-size:0.77rem;color:#2e2e2e;white-space:nowrap}}
-      .price-our{{background:#F5D000;border-color:#c9aa00;color:#111;font-weight:700}}
-      .price-editado{{background:#e8f0ff!important;border-color:#4b7cff!important;color:#1a3caa!important;cursor:pointer;}}
-      .editado-tag{{display:inline-block;margin-left:5px;font-size:0.6rem;color:#4b7cff;font-weight:700;vertical-align:middle}}
-      .td-precio-comp{{cursor:pointer;}}
-      .td-precio-comp:hover .price-pill{{border-color:#4b7cff!important;}}
-      .td-precio-comp-hint{{font-size:0.58rem;color:#bbb;display:block;margin-top:1px}}
-      .empresa-tag{{display:inline-block;background:#111;color:#fff;font-size:0.65rem;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase}}
-      .rubro-tag{{display:inline-block;background:#fdf9e3;border:1px solid #F5D000;color:#111;font-size:0.65rem;font-weight:600;padding:2px 6px;border-radius:4px}}
-      .product-name{{max-width:175px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;font-weight:500;color:#1c1c1c}}
-      .product-name a{{color:inherit;text-decoration:none}}
-      .product-name a:hover{{color:#c9aa00;text-decoration:underline}}
-      .dif-mas{{color:#d93a3a;font-weight:700;font-family:'DM Mono',monospace;font-size:0.77rem}}
-      .dif-menos{{color:#1a9e6e;font-weight:700;font-family:'DM Mono',monospace;font-size:0.77rem}}
-      .dif-igual{{color:#aaa;font-family:'DM Mono',monospace;font-size:0.77rem}}
-      .price-up{{color:#d93a3a;font-size:0.69rem;font-weight:600}}
-      .price-down{{color:#1a9e6e;font-size:0.69rem;font-weight:600}}
-      .status-none{{color:#aaa;font-style:italic;font-size:0.73rem}}
-      img{{border-radius:6px;object-fit:cover;border:1px solid #e4e4e4}}
-      #edit-overlay{{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center;}}
-      #edit-overlay.visible{{display:flex;}}
-      #edit-box{{background:#fff;border-radius:14px;padding:28px 32px;min-width:320px;box-shadow:0 8px 40px rgba(0,0,0,0.18);font-family:'DM Sans',sans-serif;}}
-      #edit-box h3{{font-size:1rem;font-weight:700;color:#111;margin-bottom:4px}}
-      #edit-box .edit-sub{{font-size:0.78rem;color:#888;margin-bottom:18px}}
-      #edit-box .edit-row{{display:flex;gap:10px;align-items:center;margin-bottom:14px;}}
-      #edit-box label{{font-size:0.75rem;font-weight:600;color:#5a5a5a;min-width:90px}}
-      #edit-box input{{flex:1;border:1.5px solid #e4e4e4;border-radius:7px;padding:8px 12px;font-family:'DM Mono',monospace;font-size:0.95rem;color:#111;outline:none;}}
-      #edit-box input:focus{{border-color:#F5D000;}}
-      #edit-box .edit-btns{{display:flex;gap:10px;margin-top:6px;}}
-      #edit-box button{{flex:1;padding:9px;border-radius:8px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:700;font-size:0.85rem;}}
-      .btn-guardar{{background:#F5D000;color:#111;}}
-      .btn-guardar:hover{{background:#e0c000;}}
-      .btn-restablecer{{background:#f2f2f0;color:#555;}}
-      .btn-restablecer:hover{{background:#e4e4e4;}}
-      .btn-cancelar{{background:#fff;color:#888;border:1px solid #e4e4e4!important;}}
-    </style></head><body>
-    <div class="outer">
-      <div class="search-bar">
-        <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
-          <circle cx="8.5" cy="8.5" r="5.5" stroke="#111" stroke-width="2"/>
-          <path d="M13 13l4 4" stroke="#111" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-        <input type="text" id="buscar" placeholder="Filtrar por producto, SKU, rubro, tienda…" oninput="filtrar(this.value)">
-        <span class="result-count" id="count">{n_filas} productos</span>
-      </div>
-      <div class="scroll-wrap">
-        <table id="tabla-principal">
-          <thead><tr>
-            <th class="sku-th">SKU</th>
-            <th>Rubro</th><th>Foto</th><th>Producto</th><th>Precio Nuestro</th>
-            <th>Tienda</th><th>Foto</th><th>Competidor</th>
-            <th title="Doble click para editar">Precio Comp. ✎</th><th>Diferencia</th><th>Margen</th>
-          </tr></thead>
-          <tbody id="tbody">{filas_html}</tbody>
-        </table>
-      </div>
-    </div>
+    _comp_result = _tabla_comp(
+        filas=_filas_comp,
+        sku_activo=sku_activo or "",
+        key=f"tabla_{len(_precios_ed)}",
+        default=None,
+        height=altura_total,
+    )
 
-    <div id="edit-overlay">
-      <div id="edit-box">
-        <h3 id="edit-title">Editar precio competidor</h3>
-        <div class="edit-sub" id="edit-sub"></div>
-        <div class="edit-row">
-          <label>Precio nuevo</label>
-          <input type="number" id="edit-input" placeholder="Ej: 49990" min="0" step="1">
-        </div>
-        <div class="edit-btns">
-          <button class="btn-guardar" onclick="guardarEdicion()">✓ Guardar</button>
-          <button class="btn-restablecer" onclick="restablecerPrecio()">↺ Restablecer</button>
-          <button class="btn-cancelar" onclick="cerrarModal()">Cancelar</button>
-        </div>
-      </div>
-    </div>
+    # Procesar resultado del componente (edición/restablecimiento desde tabla)
+    if _comp_result and isinstance(_comp_result, dict):
+        _action = _comp_result.get("action")
+        _r_sku  = str(_comp_result.get("sku","")).strip()
+        _r_emp  = str(_comp_result.get("empresa","")).strip()
+        if _action == "edit":
+            _r_pc = int(_comp_result.get("precio", 0))
+            if _r_sku and _r_emp and _r_pc > 0:
+                st.session_state["precios_editados"][(_r_sku, _r_emp)] = _r_pc
+                _guardar_precio_editado_sb(_r_sku, _r_emp, _r_pc)
+                st.rerun()
+        elif _action == "reset":
+            if _r_sku and _r_emp:
+                st.session_state["precios_editados"].pop((_r_sku, _r_emp), None)
+                _eliminar_precio_editado_sb(_r_sku, _r_emp)
+                st.rerun()
 
-    <script>
-      var _editTd = null;
-      var _editTr = null;
+    # ── PANEL DE EDICIÓN NATIVO ──────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### ✎ Editar precio de competidor")
+    _skus_disp  = sorted(df_vis["_sku"].dropna().unique().tolist())
+    _col1, _col2, _col3, _col4 = st.columns([2, 2, 2, 1])
+    with _col1:
+        _e_sku = st.selectbox("SKU", ["— seleccionar —"] + _skus_disp, key="panel_sku")
+    with _col2:
+        if _e_sku and _e_sku != "— seleccionar —":
+            _emps = sorted(df_vis[df_vis["_sku"] == _e_sku]["_empresa"].dropna().unique().tolist())
+        else:
+            _emps = []
+        _e_emp = st.selectbox("Tienda", ["— seleccionar —"] + _emps, key="panel_emp")
+    with _col3:
+        _e_pc = st.number_input("Precio manual ($)", min_value=0, step=1000, value=0, key="panel_pc")
+    with _col4:
+        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+        if st.button("💾 Guardar", key="btn_guardar_precio", use_container_width=True):
+            if _e_sku != "— seleccionar —" and _e_emp != "— seleccionar —" and _e_pc > 0:
+                _kk = (_e_sku, _e_emp)
+                st.session_state["precios_editados"][_kk] = _e_pc
+                _guardar_precio_editado_sb(_e_sku, _e_emp, _e_pc)
+                st.success(f"✓ Guardado: {_e_sku} / {_e_emp} = ${fmt(_e_pc)}")
+                st.rerun()
+            else:
+                st.warning("Selecciona SKU, tienda e ingresa un precio válido.")
 
-      function fmt(n) {{
-        if (!n) return '—';
-        return '$' + parseInt(n).toLocaleString('es-CL');
-      }}
-      function renderDif(pf, pc) {{
-        if (!pf || !pc) return '<span class="dif-igual">—</span>';
-        var d = pf - pc;
-        if (d > 0) return '<span class="dif-mas">▲ +' + parseInt(d).toLocaleString('es-CL') + '</span>';
-        if (d < 0) return '<span class="dif-menos">▼ -' + parseInt(Math.abs(d)).toLocaleString('es-CL') + '</span>';
-        return '<span class="dif-igual">= 0</span>';
-      }}
-
-      function editarPrecio(td) {{
-        _editTd = td;
-        _editTr = td.closest('tr');
-        var sku     = _editTr.getAttribute('data-sku');
-        var empresa = _editTr.getAttribute('data-empresa');
-        var pcActual = parseInt(td.getAttribute('data-pc')) || 0;
-        document.getElementById('edit-title').textContent = 'Editar precio — ' + empresa;
-        document.getElementById('edit-sub').textContent   = 'SKU: ' + sku + '  ·  Actual: ' + fmt(pcActual);
-        document.getElementById('edit-input').value = pcActual || '';
-        document.getElementById('edit-overlay').classList.add('visible');
-        setTimeout(function(){{ document.getElementById('edit-input').select(); }}, 80);
-      }}
-
-      function cerrarModal() {{
-        document.getElementById('edit-overlay').classList.remove('visible');
-        _editTd = null; _editTr = null;
-      }}
-
-      function guardarEdicion() {{
-        var val = parseInt(document.getElementById('edit-input').value);
-        if (!val || val < 100) {{ alert('Ingresa un precio válido'); return; }}
-        var pf  = parseInt(_editTr.getAttribute('data-pf')) || 0;
-        var sku     = _editTr.getAttribute('data-sku');
-        var empresa = _editTr.getAttribute('data-empresa');
-        _editTd.setAttribute('data-pc', val);
-        _editTd.innerHTML = '<span class="price-pill price-editado">' + fmt(val) +
-          '<span class="editado-tag">✎ editado</span></span>';
-        var tdDif = _editTr.querySelector('.td-dif');
-        if (tdDif) tdDif.innerHTML = renderDif(pf, val);
-        var url = new URL(window.parent.location.href);
-        url.searchParams.set('edit_sku', sku);
-        url.searchParams.set('edit_emp', empresa);
-        url.searchParams.set('edit_pc', val);
-        window.parent.location.href = url.toString();
-      }}
-
-      function restablecerPrecio() {{
-        var sku     = _editTr.getAttribute('data-sku');
-        var empresa = _editTr.getAttribute('data-empresa');
-        var url = new URL(window.parent.location.href);
-        url.searchParams.set('reset_sku', sku);
-        url.searchParams.set('reset_emp', empresa);
-        window.parent.location.href = url.toString();
-        cerrarModal();
-      }}
-
-      function filtrar(q) {{
-        var term = q.trim().toLowerCase();
-        var rows = document.querySelectorAll('#tbody tr');
-        var visible = 0;
-        rows.forEach(function(tr) {{
-          var match = !term || (tr.getAttribute('data-search') || '').includes(term);
-          tr.classList.toggle('hidden', !match);
-          if (match) visible++;
-        }});
-        document.getElementById('count').textContent = visible + ' producto' + (visible !== 1 ? 's' : '');
-      }}
-
-      document.addEventListener('keydown', function(e) {{
-        if (e.key === 'Escape') cerrarModal();
-        if (e.key === 'Enter' && document.getElementById('edit-overlay').classList.contains('visible')) guardarEdicion();
-      }});
-      document.getElementById('edit-overlay').addEventListener('click', function(e) {{
-        if (e.target === this) cerrarModal();
-      }});
-    </script>
-    </body></html>"""
-    components.html(tabla_html, height=altura_total + 4, scrolling=False)
-
-    msg_edit = st.query_params.get("_edit_msg", None)
-
-    precios_ed = st.session_state.get("precios_editados", {})
-    if precios_ed:
-        with st.expander(f"✎ Precios editados manualmente ({len(precios_ed)})", expanded=False):
-            cols_ed = st.columns([2,2,2,1])
-            cols_ed[0].markdown("**SKU**"); cols_ed[1].markdown("**Tienda**")
-            cols_ed[2].markdown("**Precio manual**"); cols_ed[3].markdown("**Acción**")
-            for (sku_k, emp_k), pc_k in list(precios_ed.items()):
-                c0,c1,c2,c3 = st.columns([2,2,2,1])
-                c0.write(sku_k); c1.write(emp_k); c2.write(f"${fmt(pc_k)}")
-                if c3.button("✕", key=f"del_{sku_k}_{emp_k}"):
-                    del st.session_state["precios_editados"][(sku_k, emp_k)]
-                    _eliminar_precio_editado_sb(sku_k, emp_k)
+    # ── PRECIOS EDITADOS ──────────────────────────────────────────────────────
+    _precios_ed_panel = st.session_state.get("precios_editados", {})
+    if _precios_ed_panel:
+        with st.expander(f"✎ Precios editados manualmente ({len(_precios_ed_panel)})", expanded=False):
+            _cols_h = st.columns([2,2,2,1])
+            _cols_h[0].markdown("**SKU**"); _cols_h[1].markdown("**Tienda**")
+            _cols_h[2].markdown("**Precio manual**"); _cols_h[3].markdown("**Acción**")
+            for (_sk, _em), _pv in list(_precios_ed_panel.items()):
+                _c0,_c1,_c2,_c3 = st.columns([2,2,2,1])
+                _c0.write(_sk); _c1.write(_em); _c2.write(f"${fmt(_pv)}")
+                if _c3.button("✕", key=f"del_{_sk}_{_em}"):
+                    del st.session_state["precios_editados"][(_sk, _em)]
+                    _eliminar_precio_editado_sb(_sk, _em)
                     st.rerun()
-            if st.button("Limpiar todos los precios editados"):
+            if st.button("🗑 Limpiar todos"):
                 st.session_state["precios_editados"] = {}
                 _limpiar_todos_precios_editados_sb()
                 st.rerun()
