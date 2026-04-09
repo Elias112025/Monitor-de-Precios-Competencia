@@ -42,6 +42,58 @@ _playwright_sem = threading.Semaphore(3)
 DB_PATH         = "historial_precios.db"
 import base64
 
+# ── AUTENTICACIÓN ─────────────────────────────────────────────────────────────
+import hashlib
+
+_PASSWORD_HASH = hashlib.sha256("#Edge2026".encode()).hexdigest()
+
+def _check_login(email: str, password: str) -> str | None:
+    if not email.lower().endswith("@form.cl"):
+        return "Solo se permiten correos @form.cl"
+    if hashlib.sha256(password.encode()).hexdigest() != _PASSWORD_HASH:
+        return "Contraseña incorrecta"
+    return None
+
+if not st.session_state.get("autenticado"):
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
+    .stApp { background: #f7f7f5 !important; font-family: 'DM Sans', sans-serif; }
+    </style>
+    <div style="max-width:380px;margin:80px auto 0">
+        <div style="font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;
+                    color:#111111;margin-bottom:4px;text-align:center">
+            Monitor de Precios</div>
+        <div style="font-size:0.8rem;color:#5a5a5a;margin-bottom:28px;text-align:center">
+            Form Design · Acceso restringido</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.form("login_form"):
+        email    = st.text_input("Correo @form.cl", placeholder="nombre@form.cl")
+        password = st.text_input("Contraseña", type="password")
+        submit   = st.form_submit_button("Ingresar", use_container_width=True)
+
+    if submit:
+        error = _check_login(email.strip(), password)
+        if error:
+            st.error(error)
+        else:
+            st.session_state["autenticado"] = True
+            st.session_state["usuario_email"] = email.strip().lower()
+            st.rerun()
+
+    st.stop()
+
+# ── LOGOUT (sidebar) ──────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown(f"👤 `{st.session_state.get('usuario_email', '')}`")
+    st.divider()
+    if st.button("Cerrar sesión", use_container_width=True):
+        st.session_state["autenticado"] = False
+        st.session_state["usuario_email"] = ""
+        st.rerun()
+
 # ── SUPABASE CLIENT ─────────────────────────────────────────────────────────
 def _get_supabase():
     try:
@@ -986,17 +1038,7 @@ def generar_reporte(df_final: pd.DataFrame, df_excel: pd.DataFrame) -> bytes:
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf.getvalue()
 
-# ─────────────────────────────────────────────
-# GENERA EXCEL CON PRECIOS EDITADOS APLICADOS
-# Se llama en el momento exacto del render del botón.
-# precios_editados ya está en session_state y correcto
-# porque la tabla los muestra bien → el Excel usará lo mismo.
-# ─────────────────────────────────────────────
 def _aplicar_precios_editados_a_df(df_base: pd.DataFrame, precios_editados: dict) -> pd.DataFrame:
-    """
-    Fuente de verdad única: aplica SIEMPRE precios_editados sobre df_base.
-    Usada tanto para la tabla visual como para el Excel — misma lógica, mismo resultado.
-    """
     df_out = df_base.copy()
     for idx, row in df_out.iterrows():
         key = (str(row.get("_sku", "")).strip(), str(row.get("_empresa", "")).strip())
@@ -1018,7 +1060,6 @@ def _aplicar_precios_editados_a_df(df_base: pd.DataFrame, precios_editados: dict
             if "Diferencia" in df_out.columns:
                 df_out.at[idx, "Diferencia"] = r_dif(dif_nuevo)
     return df_out
-
 
 def _generar_excel_con_ediciones() -> bytes:
     df_base = st.session_state["df_final"].copy()
@@ -1177,7 +1218,6 @@ if "precios_editados" not in st.session_state:
 # RECEPTOR DE EDICIONES DE PRECIO (query_params)
 # ─────────────────────────────────────────────
 _qp = st.query_params
-# Query params no se usan para edición (la edición es via panel nativo)
 if "reset_sku" in _qp and "reset_emp" in _qp:
     try:
         _sku_r = str(_qp["reset_sku"]).strip()
@@ -1305,7 +1345,6 @@ if actualizar:
     _df_nuevo = pd.DataFrame(filas)
     _ts_nuevo = time.strftime("%d/%m/%Y %H:%M:%S")
 
-    # Aplicar precios editados persistentes sobre el nuevo scrape
     _pe = st.session_state.get("precios_editados", {})
     if _pe:
         for idx_r, row in _df_nuevo.iterrows():
@@ -1352,11 +1391,8 @@ if "df_final" in st.session_state:
     </div>
     """, unsafe_allow_html=True)
 
-
-
     import streamlit.components.v1 as components
 
-    # ── APLICAR EDITS A df_vis PRIMERO (antes del modal y la tabla) ────────────
     _precios_ed = st.session_state.get("precios_editados", {})
     for _idx_v, _row_v in df_vis.iterrows():
         _key_v = (str(_row_v.get("_sku","")), str(_row_v.get("_empresa","")))
@@ -1372,7 +1408,6 @@ if "df_final" in st.session_state:
             )
             df_vis.at[_idx_v, "Diferencia"] = r_dif(_dif_v)
 
-    # ── MODAL SKU (ahora usa df_vis ya con edits aplicados) ───────────────────
     sku_nombre_map   = df_vis[["_sku","_nombre"]].drop_duplicates("_sku").set_index("_sku")["_nombre"].to_dict()
     opciones_display = {f"{v}  ({k})": k for k, v in sku_nombre_map.items()}
     opciones_lista   = ["— ninguno —"] + sorted(opciones_display.keys())
@@ -1385,7 +1420,6 @@ if "df_final" in st.session_state:
         with st.expander(f"📊 {sku_nombre_map.get(sku_activo, sku_activo)}", expanded=True):
             render_modal_sku(sku_activo, filas_sku, row_excel)
 
-    # 2. Aplicar a df_excel (reporte) — misma key exacta, sobre df_final completo sin filtros
     _df_excel = st.session_state["df_final"].copy()
     for _idx_e, _row_e in _df_excel.iterrows():
         _key_e = (str(_row_e.get("_sku","")), str(_row_e.get("_empresa","")))
@@ -1399,7 +1433,6 @@ if "df_final" in st.session_state:
             _df_excel.at[_idx_e, "_precio_comp"] = _pc_e
             _df_excel.at[_idx_e, "_dif_num"]     = (_pf_e - _pc_e) if _pf_e else None
 
-    # 3. Botón — usa _df_excel que acabamos de construir aquí mismo
     _excel_bytes = generar_reporte(_df_excel, df)
     st.download_button(
         label="⬇  Descargar Reporte",
@@ -1409,7 +1442,6 @@ if "df_final" in st.session_state:
         key=f"dl_{len(_precios_ed)}",
     )
 
-    # ── TABLA CON EDICIÓN NATIVA (declare_component) ─────────────────────────
     import os as _os
     _comp_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "table_component")
     _tabla_comp = components.declare_component("price_table", path=_comp_path)
@@ -1457,7 +1489,6 @@ if "df_final" in st.session_state:
         height=altura_total,
     )
 
-    # Procesar resultado del componente (edición/restablecimiento desde tabla)
     if _comp_result and isinstance(_comp_result, dict):
         _action = _comp_result.get("action")
         _r_sku  = str(_comp_result.get("sku","")).strip()
@@ -1474,7 +1505,6 @@ if "df_final" in st.session_state:
                 _eliminar_precio_editado_sb(_r_sku, _r_emp)
                 st.rerun()
 
-    # ── PANEL DE EDICIÓN NATIVO ──────────────────────────────────────────────
     st.markdown("---")
     st.markdown("#### ✎ Editar precio de competidor")
     _skus_disp  = sorted(df_vis["_sku"].dropna().unique().tolist())
@@ -1501,7 +1531,6 @@ if "df_final" in st.session_state:
             else:
                 st.warning("Selecciona SKU, tienda e ingresa un precio válido.")
 
-    # ── PRECIOS EDITADOS ──────────────────────────────────────────────────────
     _precios_ed_panel = st.session_state.get("precios_editados", {})
     if _precios_ed_panel:
         with st.expander(f"✎ Precios editados manualmente ({len(_precios_ed_panel)})", expanded=False):
