@@ -1290,7 +1290,7 @@ with col_emp:
     })
     filtro_empresa = st.multiselect("Tienda", todas_empresas, placeholder="Todas las tiendas")
 with col_dif:
-    filtro_dif = st.selectbox("Diferencia", ["Todos","Comp. más caro","Comp. más barato","Igual"])
+    filtro_dif = st.selectbox("Diferencia", ["Todos","Nosotros más caros que la competencia","Nosotros más baratos que la competencia","Igual"])
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
@@ -1374,8 +1374,8 @@ if "df_final" in st.session_state:
     df_vis = st.session_state["df_final"].copy()
     if filtro_rubro:    df_vis = df_vis[df_vis["_rubro"].isin(filtro_rubro)]
     if filtro_empresa:  df_vis = df_vis[df_vis["_empresa"].isin(filtro_empresa)]
-    if filtro_dif == "Comp. más caro":     df_vis = df_vis[df_vis["_dif_num"].notna() & (df_vis["_dif_num"] > 0)]
-    elif filtro_dif == "Comp. más barato": df_vis = df_vis[df_vis["_dif_num"].notna() & (df_vis["_dif_num"] < 0)]
+    if filtro_dif == "Nosotros más caros que la competencia":     df_vis = df_vis[df_vis["_dif_num"].notna() & (df_vis["_dif_num"] > 0)]
+    elif filtro_dif == "Nosotros más baratos que la competencia": df_vis = df_vis[df_vis["_dif_num"].notna() & (df_vis["_dif_num"] < 0)]
     elif filtro_dif == "Igual":            df_vis = df_vis[df_vis["_dif_num"].notna() & (df_vis["_dif_num"] == 0)]
 
     total     = len(df_vis)
