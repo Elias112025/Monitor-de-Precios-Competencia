@@ -49,9 +49,9 @@ _PASSWORD_HASH = hashlib.sha256("#Edge2026".encode()).hexdigest()
 
 def _check_login(email: str, password: str) -> str | None:
     if not email.lower().endswith("@form.cl"):
-        return "Solo se permiten correos @form.cl"
+        return "Credenciales inválidas"
     if hashlib.sha256(password.encode()).hexdigest() != _PASSWORD_HASH:
-        return "Contraseña incorrecta"
+        return "Credenciales inválidas"
     return None
 
 if not st.session_state.get("autenticado"):
